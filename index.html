@@ -20,36 +20,18 @@
     <h3>Climate Layers</h3>
     <button data-field="heat">Heat</button>
     <button data-field="SPEI">Drought</button>
-    <hr />
-    <button id="shelter-btn">Find Nearest Shelter</button>
+    <button data-field="urban_health">Urban Health</button>
   </div>
 
-  <!-- MUNICIPALITY BUTTON (Top Right) -->
-  <div id="municipality-nav">
-    <button onclick="location.href='municipality.html'">
-      Municipality View →
-    </button>
-  </div>
-
-  <!-- RANKING (Bottom Right) -->
-  <div id="rank-panel">
-    <h4>Top 5 Vulnerable Neighborhoods</h4>
-    <div id="rank-popup">
-      <div style="color:#666; font-style:italic; font-size:13px; padding:10px;">
-        Select a layer to see top neighborhoods...
-      </div>
-    </div>
-  </div>
-
-  <!-- LEGEND & INFO (Bottom Left) -->
+  <!-- LEGEND (Bottom Left) -->
   <div id="info-legend">
     <div style="display:flex; justify-content:space-between; align-items:center; color:#fff; font-weight:700;">
-      <span>Vulnerability Intensity</span>
+      <span id="legend-title">Vulnerability Intensity</span>
     </div>
     <div class="legend-gradient"></div>
     <div class="legend-labels">
-      <span>Low</span>
-      <span>High</span>
+      <span id="legend-low">Low</span>
+      <span id="legend-high">High</span>
     </div>
 
     <div class="radius-control">
@@ -79,7 +61,10 @@
       <strong>2. Drought (SPEI):</strong> Standardized Precipitation Evapotranspiration Index, indicating hydrological stress from Google Earth Engine (2023).
     </p>
     <p>
-      All data points are aggregated to local neighborhood areas and normalized to create a composite vulnerability score (0-1).
+      <strong>3. Urban Health:</strong> A composite index of immigrant density, inverted income level (lower income = higher vulnerability), and general population density.
+    </p>
+    <p>
+      All data points are aggregated to local neighborhood areas and normalized to create a composite vulnerability score (0–1).
     </p>
     <p>
       <strong>City Center Reference:</strong> Plaça Catalunya (2.1734°E, 41.3851°N)
@@ -89,23 +74,30 @@
     </p>
   </div>
 
-  <!-- SHELTER MODAL -->
-  <div id="shelter-modal">
-    <span class="close-modal" onclick="document.getElementById('shelter-modal').style.display='none'">&times;</span>
-    <h4>Find Nearest Climate Shelter</h4>
-    <p style="color:#ccc; font-size:13px; margin-bottom:15px;">
-      Enter your address or click on the map to find the nearest climate shelter.
-    </p>
-    <input type="text" id="location-input" placeholder="Enter your address (e.g., Gran Via, 100)">
-    <button onclick="findNearestShelter()">Find Shelter</button>
-    <div id="shelter-status" style="margin-top:15px; color:#aaa; font-size:13px;"></div>
-  </div>
+  <!-- RIGHT CHAT PANEL -->
+  <div id="chat-panel">
+    <div id="chat-header">
+      <h3>Policy Simulator</h3>
+      <p>Describe an urban intervention or policy. The AI will analyse its spatial climate impact across Barcelona neighbourhoods.</p>
+    </div>
 
-  <!-- SHELTER INFO PANEL -->
-  <div id="shelter-info-panel">
-    <span id="close-shelter-panel">&times;</span>
-    <h4>Nearest Climate Shelter</h4>
-    <div id="shelter-info-content"></div>
+    <div id="chat-messages">
+      <div class="chat-welcome">
+        <div class="welcome-arrow">→</div>
+        <p>Enter a policy sentence below. For example:</p>
+        <ul>
+          <li>"Installing green roofs in Gràcia to reduce heat"</li>
+          <li>"Reducing green spaces in Eixample for new construction"</li>
+          <li>"Water-sensitive urban design in Sant Martí"</li>
+        </ul>
+        <p>After clicking <strong>Analyse</strong>, select a layer on the left to see its spatial impact on the map.</p>
+      </div>
+    </div>
+
+    <div id="chat-input-area">
+      <textarea id="policy-input" placeholder="e.g. Installing green roofs in Gràcia to reduce the urban heat island effect..." rows="3"></textarea>
+      <button id="analyse-btn" onclick="analysePolicy()">Analyse</button>
+    </div>
   </div>
 
 </body>

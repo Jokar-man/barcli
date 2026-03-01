@@ -6,35 +6,13 @@ let points = null;
 let activeFields = [];
 let stats = {};
 let cadastralData = null;
-let climateShelters = null;
-let climateIsochrones = null;
-let userLocation = null;
-let animationMarker = null;
-
-const rankContainer = document.getElementById("rank-popup");
 let centerFocusKm = 5;
 
-/* -------------------------
-   UTILITY: Haversine Distance (km)
--------------------------- */
-function getDistance(coord1, coord2) {
-  const R = 6371;
-  const lat1 = coord1[1];
-  const lon1 = coord1[0];
-  const lat2 = coord2[1];
-  const lon2 = coord2[0];
-
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
-
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
-
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  const distance = R * c;
-  return distance;
-}
+// Impact simulation state
+let impactData = null;   // Last AI response
+const ALPHA = 0.6;       // Local vs citywide blend weight
+const BETA  = 0.1;       // Policy strength scaling
+const AI_API_URL = "https://jokar-man-urban-climate-model.hf.space";
 
 /* -------------------------
    Initialize MAP
@@ -116,13 +94,24 @@ map.on("load", async () => {
 
   computeStats();
 
+  /* -------------------------
+     Original Points Source
+  -------------------------- */
   map.addSource("points", {
     type: "geojson",
     data: points
   });
 
   /* -------------------------
-     Glow Halo Layer
+     Impact Overlay Source (starts empty)
+  -------------------------- */
+  map.addSource("impact-points", {
+    type: "geojson",
+    data: { type: "FeatureCollection", features: [] }
+  });
+
+  /* -------------------------
+     Original Glow Halo Layer
   -------------------------- */
   map.addLayer({
     id: "glow-halo",
@@ -136,11 +125,11 @@ map.on("load", async () => {
       ],
       "circle-color": [
         "interpolate", ["linear"], ["get", "_value"],
-        0, "rgba(0,120,255,0)",
+        0,   "rgba(0,120,255,0)",
         0.1, "rgba(0,120,255,0.12)",
         0.5, "rgba(0,255,180,0.18)",
         0.8, "rgba(255,220,0,0.24)",
-        1, "rgba(255,0,80,0.32)"
+        1,   "rgba(255,0,80,0.32)"
       ],
       "circle-blur": 0.8,
       "circle-opacity": 1
@@ -148,7 +137,7 @@ map.on("load", async () => {
   });
 
   /* -------------------------
-     Glow Core Layer
+     Original Glow Core Layer
   -------------------------- */
   map.addLayer({
     id: "glow-core",
@@ -173,106 +162,69 @@ map.on("load", async () => {
   });
 
   /* -------------------------
-     LOAD Climate Shelters
+     Impact Halo Layer (hidden initially)
+     Color: green (mitigation) → gray (neutral) → red (aggravation)
   -------------------------- */
-  try {
-    const shelterResp = await fetch("data/climate_shelters.geojson");
-    const shelterText = await shelterResp.text();
-    climateShelters = JSON.parse(shelterText);
-
-    map.addSource("climate-shelters", {
-      type: "geojson",
-      data: climateShelters
-    });
-
-    map.addLayer({
-      id: "shelter-points",
-      type: "circle",
-      source: "climate-shelters",
-      paint: {
-        "circle-radius": 10,
-        "circle-color": "#ffa500",
-        "circle-stroke-width": 3,
-        "circle-stroke-color": "#fff",
-        "circle-opacity": 0.9
-      },
-      layout: {
-        "visibility": "visible"
-      }
-    });
-
-    map.addLayer({
-      id: "shelter-labels",
-      type: "symbol",
-      source: "climate-shelters",
-      layout: {
-        "text-field": "🏠",
-        "text-size": 18,
-        "visibility": "visible",
-        "text-offset": [0, -1.5]
-      },
-      paint: {
-        "text-color": "#ffa500",
-        "text-halo-color": "#000",
-        "text-halo-width": 2
-      }
-    });
-  } catch (err) {
-    console.error("Could not load climate shelters:", err);
-  }
-
-  /* -------------------------
-     LOAD Climate Isochrones
-  -------------------------- */
-  try {
-    const isoResp = await fetch("data/climate_isochrone.geojson");
-    const isoText = await isoResp.text();
-    climateIsochrones = JSON.parse(isoText);
-    console.log("Loaded isochrones:", climateIsochrones);
-  } catch (err) {
-    console.error("Could not load climate isochrones:", err);
-  }
-
-  /* -------------------------
-     Click handlers
-  -------------------------- */
-  map.on("mouseenter", "glow-core", () => map.getCanvas().style.cursor = "pointer");
-  map.on("mouseleave", "glow-core", () => map.getCanvas().style.cursor = "");
-
-  // Click on shelter points
-  map.on("click", "shelter-points", (e) => {
-    const f = e.features[0];
-    const p = f.properties;
-
-    let html = `<div style="font-weight:700;color:#ffa500">Climate Shelter</div>`;
-
-    const name = p.name || p.Name || "N/A";
-    const neighborhood = p.addresses_neighborhood_name || "N/A";
-    const district = p.addresses_district_name || "N/A";
-
-    html += `<div style="color:#ccc;margin-top:4px;"><strong>Name:</strong> ${name}</div>`;
-    html += `<div style="color:#ccc;margin-top:4px;"><strong>Neighborhood:</strong> ${neighborhood}</div>`;
-    html += `<div style="color:#ccc;margin-top:4px;"><strong>District:</strong> ${district}</div>`;
-
-    new mapboxgl.Popup().setLngLat(e.lngLat).setHTML(html).addTo(map);
-  });
-
-  map.on("mouseenter", "shelter-points", () => map.getCanvas().style.cursor = "pointer");
-  map.on("mouseleave", "shelter-points", () => map.getCanvas().style.cursor = "");
-
-  // Click on map to set user location when shelter modal is open
-  map.on("click", (e) => {
-    const modal = document.getElementById("shelter-modal");
-    if (modal.style.display === "block") {
-      userLocation = [e.lngLat.lng, e.lngLat.lat];
-      document.getElementById("location-input").value = `${e.lngLat.lat.toFixed(4)}, ${e.lngLat.lng.toFixed(4)}`;
+  map.addLayer({
+    id: "impact-halo",
+    type: "circle",
+    source: "impact-points",
+    layout: { "visibility": "none" },
+    paint: {
+      "circle-radius": [
+        "interpolate", ["linear"], ["zoom"],
+        12, 6,
+        16, 28
+      ],
+      "circle-color": [
+        "interpolate", ["linear"], ["get", "_impact_value"],
+        0,    "rgba(0,255,100,0.22)",
+        0.35, "rgba(0,200,180,0.18)",
+        0.5,  "rgba(160,160,160,0.10)",
+        0.65, "rgba(255,140,0,0.18)",
+        1,    "rgba(255,0,80,0.28)"
+      ],
+      "circle-blur": 0.8,
+      "circle-opacity": [
+        "case", ["to-boolean", ["get", "_inFocus"]], 1, 0
+      ]
     }
   });
+
+  /* -------------------------
+     Impact Core Layer (hidden initially)
+  -------------------------- */
+  map.addLayer({
+    id: "impact-core",
+    type: "circle",
+    source: "impact-points",
+    layout: { "visibility": "none" },
+    paint: {
+      "circle-radius": [
+        "interpolate", ["linear"], ["zoom"],
+        12, 3,
+        16, 10
+      ],
+      "circle-color": [
+        "interpolate", ["linear"], ["get", "_impact_value"],
+        0,    "rgb(0,255,127)",
+        0.3,  "rgb(0,210,180)",
+        0.5,  "rgb(160,160,160)",
+        0.7,  "rgb(255,140,0)",
+        1,    "rgb(255,0,60)"
+      ],
+      "circle-opacity": [
+        "case", ["to-boolean", ["get", "_inFocus"]], 0.9, 0
+      ]
+    }
+  });
+
+  map.on("mouseenter", "glow-core", () => map.getCanvas().style.cursor = "pointer");
+  map.on("mouseleave", "glow-core", () => map.getCanvas().style.cursor = "");
 
   setupButtons();
   setupRadiusControl();
   setupInfoModal();
-  setupShelterModal();
   updateVisualization();
 });
 
@@ -280,26 +232,55 @@ map.on("load", async () => {
    Stats + Normalization
 -------------------------- */
 function computeStats() {
-  const fields = { heat: [], SPEI: [] };
-
+  // Step 1: Collect sub-field raw values for urban health
+  const subData = { immigrant1: [], income1: [], pop_sex3: [] };
   points.features.forEach(f => {
     const p = f.properties;
-    const heatVal = computeRaw(p, "heat");
+    subData.immigrant1.push(+p.immigrant1 || 0);
+    subData.income1.push(+p.income1 || 0);
+    subData.pop_sex3.push(+p.pop_sex3 || 0);
+  });
 
-    fields.heat.push(heatVal);
-    fields.SPEI.push(p.SPEI || 0);
+  // Sub-field stats (5th–95th percentile)
+  const subStats = {};
+  Object.keys(subData).forEach(k => {
+    const sorted = subData[k].filter(isFinite).sort((a, b) => a - b);
+    const n = sorted.length;
+    const min = sorted[Math.floor(n * 0.05)] || 0;
+    const max = sorted[Math.floor(n * 0.95)] || 1;
+    subStats[k] = { min, max, range: Math.max(1e-6, max - min) };
+  });
+
+  // Step 2: Precompute _urban_health on each feature
+  // Urban Health = immigrants (direct) + income (inverted, lower income = more vulnerable) + population (direct)
+  points.features.forEach(f => {
+    const p = f.properties;
+    const normImm = Math.min(1, Math.max(0, ((+p.immigrant1 || 0) - subStats.immigrant1.min) / subStats.immigrant1.range));
+    const normInc = Math.min(1, Math.max(0, ((+p.income1   || 0) - subStats.income1.min)    / subStats.income1.range));
+    const normPop = Math.min(1, Math.max(0, ((+p.pop_sex3  || 0) - subStats.pop_sex3.min)   / subStats.pop_sex3.range));
+    // Invert income so low income → high vulnerability
+    p._urban_health = (normImm + (1 - normInc) + normPop) / 3;
+  });
+
+  // Step 3: Compute overall stats per field (5th–95th percentile)
+  const fields = { heat: [], SPEI: [], urban_health: [] };
+  points.features.forEach(f => {
+    const p = f.properties;
+    fields.heat.push(computeRaw(p, "heat"));
+    fields.SPEI.push(computeRaw(p, "SPEI"));
+    fields.urban_health.push(p._urban_health);
   });
 
   Object.keys(fields).forEach(k => {
-    const a = fields[k].filter(x => x != null && isFinite(x)).sort((x,y)=>x-y);
+    const a = fields[k].filter(x => x != null && isFinite(x)).sort((x, y) => x - y);
     const n = a.length;
     if (n === 0) {
       stats[k] = { min: 0, max: 1, range: 1 };
       return;
     }
     stats[k] = {
-      min: a[Math.floor(n*0.05)] || 0,
-      max: a[Math.floor(n*0.95)] || 1
+      min: a[Math.floor(n * 0.05)] || 0,
+      max: a[Math.floor(n * 0.95)] || 1
     };
     stats[k].range = Math.max(1e-6, stats[k].max - stats[k].min);
   });
@@ -314,11 +295,8 @@ function normalize(raw, f) {
 }
 
 function computeRaw(p, f) {
-  if (f === "heat") {
-    const lst = +p.LST1 || 0;
-    const uhi = +p.uhi2 || 0;
-    return (lst + uhi) / 2;
-  }
+  if (f === "heat")         return ((+p.LST1 || 0) + (+p.uhi2 || 0)) / 2;
+  if (f === "urban_health") return p._urban_health || 0;
   return +p[f] || 0;
 }
 
@@ -339,14 +317,13 @@ function setupButtons() {
       }
 
       updateVisualization();
-      flyToTop();
     };
   });
 }
 
 function setupRadiusControl() {
   const slider = document.getElementById("radius-slider");
-  const label = document.getElementById("radius-val");
+  const label  = document.getElementById("radius-val");
 
   slider.oninput = () => {
     centerFocusKm = Number(slider.value);
@@ -356,432 +333,320 @@ function setupRadiusControl() {
 }
 
 function setupInfoModal() {
-  const icon = document.getElementById("info-icon");
+  const icon  = document.getElementById("info-icon");
   const modal = document.getElementById("info-modal");
 
-  icon.onclick = () => {
-    modal.style.display = "block";
-  };
+  icon.onclick = () => { modal.style.display = "block"; };
 
   window.onclick = (event) => {
-    if (event.target === modal) {
-      modal.style.display = "none";
-    }
-  };
-}
-
-function setupShelterModal() {
-  const btn = document.getElementById("shelter-btn");
-  const modal = document.getElementById("shelter-modal");
-  const closeBtn = document.getElementById("close-shelter-panel");
-
-  btn.onclick = () => {
-    modal.style.display = "block";
-    document.getElementById("shelter-status").textContent = "Click on the map or enter an address to begin.";
-    document.getElementById("shelter-status").style.color = "#aaa";
-  };
-
-  closeBtn.onclick = () => {
-    document.getElementById("shelter-info-panel").style.display = "none";
-    clearShelterVisualization();
+    if (event.target === modal) modal.style.display = "none";
   };
 }
 
 function updateVisualization() {
-  const vulnerabilityFields = activeFields;
-
+  // Update original _value and _inFocus for every point
   points.features.forEach(f => {
-    let sum = 0;
-    const coords = f.geometry.coordinates;
-    const distanceToCenter = getDistance(CENTER, coords);
+    const p     = f.properties;
+    const dist  = getDistance(CENTER, f.geometry.coordinates);
+    p._inFocus  = dist <= centerFocusKm;
 
-    f.properties._inFocus = distanceToCenter <= centerFocusKm;
-
-    if (vulnerabilityFields.length === 0) {
-      f.properties._value = 0;
+    if (activeFields.length === 0) {
+      p._value = 0;
       return;
     }
 
-    vulnerabilityFields.forEach(k => {
-      sum += normalize(computeRaw(f.properties, k), k);
+    let sum = 0;
+    activeFields.forEach(k => {
+      sum += normalize(computeRaw(p, k), k);
     });
-
-    f.properties._value = sum / vulnerabilityFields.length;
+    p._value = sum / activeFields.length;
   });
 
   map.getSource("points").setData(points);
-  updateRanking();
-}
 
-function updateRanking() {
-  rankContainer.innerHTML = "";
-
-  if (!activeFields.length) {
-    rankContainer.innerHTML =
-      `<div style="color:#666;font-style:italic;padding:10px;">Select a layer...</div>`;
-    return;
+  // Show or hide impact overlay depending on whether we have AI results + active layers
+  if (impactData && activeFields.length > 0) {
+    showImpactOverlay();
+  } else {
+    hideImpactOverlay();
   }
-
-  const focusPoints = points.features.filter(f => f.properties._inFocus);
-
-  const sortedPoints = focusPoints
-    .sort((a,b)=>b.properties._value - a.properties._value);
-
-  const topRanked = [];
-  const minDistanceKm = 1; // 1km buffer zone
-
-  for (const feature of sortedPoints) {
-    if (topRanked.length >= 5) break;
-
-    const currentCoords = feature.geometry.coordinates;
-    let isTooClose = false;
-
-    for (const rankedFeature of topRanked) {
-      const rankedCoords = rankedFeature.geometry.coordinates;
-      const dist = getDistance(currentCoords, rankedCoords);
-      if (dist < minDistanceKm) {
-        isTooClose = true;
-        break;
-      }
-    }
-
-    if (!isTooClose) {
-      topRanked.push(feature);
-    }
-  }
-
-  topRanked.forEach((f,i) => {
-    const p = f.properties;
-    const card = document.createElement("div");
-    card.className = "neigh-card";
-    card.innerHTML = `
-      <div class="neigh-title">${i+1}. ${p.N_Barri}</div>
-      <div class="neigh-meta">Score: ${Math.round(p._value*100)}%</div>
-    `;
-
-    card.onclick = () => {
-      const c = f.geometry.coordinates;
-      map.flyTo({center:c, zoom:17, pitch:65, speed:1.1});
-    };
-
-    rankContainer.appendChild(card);
-  });
 }
-
 
 /* -------------------------
-   Climate Shelter Functions
+   Impact Overlay
 -------------------------- */
-async function findNearestShelter() {
-  const input = document.getElementById("location-input").value.trim();
-  const statusDiv = document.getElementById("shelter-status");
+function showImpactOverlay() {
+  const local   = impactData.neighborhood_level;
+  const city    = impactData.city_level;
+  const δ_local = local.direction === "Aggravation" ? 1 : -1;
+  const δ_city  = city.direction  === "Aggravation" ? 1 : -1;
+  const c_local = local.confidence;
+  const c_city  = city.confidence;
 
-  if (!input) {
-    statusDiv.textContent = "Please enter a location or click on the map.";
-    statusDiv.style.color = "#ff0055";
-    return;
-  }
+  const macro = local.macro_impact;
+  const w_H = macro["Heat risk"]    || 0;
+  const w_D = macro["Drought risk"] || 0;
+  const w_P = macro["Urban health"] || 0;
 
-  statusDiv.textContent = "Searching for nearest shelter...";
-  statusDiv.style.color = "#ffa500";
+  const impactFeatures = points.features.map(f => {
+    const p = f.properties;
+    const H = normalize(computeRaw(p, "heat"),         "heat");
+    const D = normalize(computeRaw(p, "SPEI"),         "SPEI");
+    const P = normalize(computeRaw(p, "urban_health"), "urban_health");
 
-  let coords = null;
+    let I_local, I_city;
 
-  const coordMatch = input.match(/^([-\d.]+),\s*([-\d.]+)$/);
-  if (coordMatch) {
-    coords = [parseFloat(coordMatch[2]), parseFloat(coordMatch[1])];
-  } else {
-    try {
-      const geocodeUrl = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(input)}.json?access_token=${mapboxgl.accessToken}&proximity=${CENTER[0]},${CENTER[1]}&limit=1`;
-      const response = await fetch(geocodeUrl);
-      const data = await response.json();
+    if (activeFields.length === 1) {
+      // Show dimension-specific impact when a single layer is selected
+      const dimVal = { heat: w_H * H, SPEI: w_D * D, urban_health: w_P * P };
+      const v = dimVal[activeFields[0]] || 0;
+      I_local = δ_local * c_local * v;
+      I_city  = δ_city  * c_city  * v;
+    } else {
+      // Combined impact when multiple layers are active
+      I_local = δ_local * c_local * (w_H * H + w_D * D + w_P * P);
+      I_city  = δ_city  * c_city  * (w_H * H + w_D * D + w_P * P);
+    }
 
-      if (data.features && data.features.length > 0) {
-        coords = data.features[0].center;
+    // Blend local + citywide (SCIENTIFIC_WORKFLOW formula)
+    const I_final = ALPHA * I_local + (1 - ALPHA) * I_city;
+
+    // Map [-1, 1] → [0, 1] for color scale
+    const impact_value = Math.min(1, Math.max(0, (I_final + 1) / 2));
+
+    return {
+      type: "Feature",
+      geometry: f.geometry,
+      properties: {
+        _impact_value: impact_value,
+        _inFocus: p._inFocus
       }
-    } catch (err) {
-      console.error("Geocoding error:", err);
-    }
-  }
-
-  if (!coords) {
-    statusDiv.textContent = "Could not find location. Please try coordinates (lat, lng) or a valid Barcelona address.";
-    statusDiv.style.color = "#ff0055";
-    return;
-  }
-
-  userLocation = coords;
-
-  if (!climateShelters || !climateShelters.features || climateShelters.features.length === 0) {
-    handleRoutingError("No climate shelters found in the database.");
-    return;
-  }
-
-  let nearestShelter = null;
-  let minDistance = Infinity;
-
-  climateShelters.features.forEach(shelter => {
-    const shelterCoords = shelter.geometry.coordinates;
-    const distance = getDistance(coords, shelterCoords);
-
-    if (distance < minDistance) {
-      minDistance = distance;
-      nearestShelter = shelter;
-    }
+    };
   });
 
-  if (!nearestShelter) {
-    handleRoutingError("There is no nearest climate shelter available.");
+  map.getSource("impact-points").setData({
+    type: "FeatureCollection",
+    features: impactFeatures
+  });
+
+  // Dim original layers so impact is clearly readable alongside them
+  map.setPaintProperty("glow-halo", "circle-opacity", 0.3);
+  map.setPaintProperty("glow-core", "circle-opacity", 0.25);
+
+  map.setLayoutProperty("impact-halo", "visibility", "visible");
+  map.setLayoutProperty("impact-core", "visibility", "visible");
+
+  updateLegend(true);
+}
+
+function hideImpactOverlay() {
+  map.setPaintProperty("glow-halo", "circle-opacity", 1);
+  map.setPaintProperty("glow-core", "circle-opacity", 0.7);
+
+  map.setLayoutProperty("impact-halo", "visibility", "none");
+  map.setLayoutProperty("impact-core", "visibility", "none");
+
+  updateLegend(false);
+}
+
+function updateLegend(isImpact) {
+  const title    = document.getElementById("legend-title");
+  const gradient = document.querySelector(".legend-gradient");
+  const low      = document.getElementById("legend-low");
+  const high     = document.getElementById("legend-high");
+
+  if (isImpact) {
+    if (title)    title.textContent    = "Policy Impact";
+    if (gradient) gradient.style.background = "linear-gradient(90deg, rgb(0,255,127), rgb(160,160,160), rgb(255,0,60))";
+    if (low)      low.textContent      = "Mitigation";
+    if (high)     high.textContent     = "Aggravation";
+  } else {
+    if (title)    title.textContent    = "Vulnerability Intensity";
+    if (gradient) gradient.style.background = "linear-gradient(90deg, rgba(0,120,255,0.2), rgba(0,255,180,0.4), rgba(255,255,0,0.6), rgba(255,0,0,0.8))";
+    if (low)      low.textContent      = "Low";
+    if (high)     high.textContent     = "High";
+  }
+}
+
+/* -------------------------
+   Policy Analysis
+-------------------------- */
+async function analysePolicy() {
+  const inputEl  = document.getElementById("policy-input");
+  const btn      = document.getElementById("analyse-btn");
+  const messages = document.getElementById("chat-messages");
+
+  const policyText = inputEl.value.trim();
+  if (!policyText) {
+    inputEl.classList.add("input-error");
+    setTimeout(() => inputEl.classList.remove("input-error"), 1200);
     return;
   }
 
-  statusDiv.textContent = `Found shelter ${(minDistance).toFixed(2)} km away. Animating route...`;
-  statusDiv.style.color = "#00ff00";
+  // User message bubble
+  const userBubble = document.createElement("div");
+  userBubble.className = "chat-user-msg";
+  userBubble.textContent = policyText;
+  messages.appendChild(userBubble);
 
-  document.getElementById("shelter-modal").style.display = "none";
+  // Thinking dots
+  const thinkingEl = document.createElement("div");
+  thinkingEl.className = "chat-thinking";
+  thinkingEl.innerHTML = "<span></span><span></span><span></span>";
+  messages.appendChild(thinkingEl);
+  messages.scrollTop = messages.scrollHeight;
 
-  displayShelterInfo(nearestShelter, minDistance);
-  animateRouteToShelter(coords, nearestShelter.geometry.coordinates);
+  btn.disabled    = true;
+  btn.textContent = "Analysing...";
+  inputEl.value   = "";
+
+  try {
+    const response = await fetch(`${AI_API_URL}/analyze`, {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ sentence: policyText, year: 2024 })
+    });
+
+    if (!response.ok) {
+      throw new Error(`API returned status ${response.status}`);
+    }
+
+    const aiResult = await response.json();
+
+    thinkingEl.remove();
+
+    // Store and apply impact
+    impactData = aiResult;
+
+    // Render chat result card
+    renderChatResult(aiResult);
+
+    // If layers are already active, immediately show impact
+    if (activeFields.length > 0) {
+      showImpactOverlay();
+    }
+
+  } catch (err) {
+    thinkingEl.remove();
+
+    const errEl = document.createElement("div");
+    errEl.className   = "chat-error";
+    errEl.textContent = `Analysis failed: ${err.message}. Check the console for details.`;
+    messages.appendChild(errEl);
+
+    console.error("analysePolicy error:", err);
+  }
+
+  btn.disabled    = false;
+  btn.textContent = "Analyse";
+  messages.scrollTop = messages.scrollHeight;
 }
 
-function displayShelterInfo(shelter, distance) {
-  const panel = document.getElementById("shelter-info-panel");
-  const content = document.getElementById("shelter-info-content");
+function renderChatResult(aiResult) {
+  const messages = document.getElementById("chat-messages");
 
-  const props = shelter.properties;
-  const name = props.name || props.Name || "N/A";
-  const neighborhood = props.addresses_neighborhood_name || "N/A";
-  const district = props.addresses_district_name || "N/A";
+  const local        = aiResult.neighborhood_level;
+  const city         = aiResult.city_level;
+  const isMitigation = local.direction === "Mitigation";
+  const confPct      = Math.round(local.confidence * 100);
+  const neighborhood = aiResult.analyzed_neighborhood || "Barcelona";
+  const isCitywide   = aiResult.is_citywide || false;
 
-  let html = `
-    <div class="info-row">
-      <div class="info-label">Distance</div>
-      <div class="info-value">${distance.toFixed(2)} km</div>
+  const macro     = local.macro_impact  || {};
+  const heatPct   = Math.round((macro["Heat risk"]    || 0) * 100);
+  const droughtPct= Math.round((macro["Drought risk"] || 0) * 100);
+  const urbanPct  = Math.round((macro["Urban health"] || 0) * 100);
+
+  // Top 4 drivers sorted by magnitude
+  const drivers    = local.drivers || {};
+  const topDrivers = Object.entries(drivers)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 4);
+
+  const driversHtml = topDrivers.map(([name, val]) => {
+    const pct = Math.round(val * 100);
+    return `
+      <div class="driver-row">
+        <span class="driver-label">${name}</span>
+        <div class="driver-bar-track">
+          <div class="driver-bar-fill" style="width:${pct}%"></div>
+        </div>
+        <span class="driver-pct">${pct}%</span>
+      </div>`;
+  }).join("");
+
+  // City-level direction line
+  const cityDir      = city.direction === "Mitigation" ? "↓ Mitigation" : "↑ Aggravation";
+  const cityConfPct  = Math.round(city.confidence * 100);
+  const cityColor    = city.direction === "Mitigation" ? "#00cc66" : "#ff4466";
+
+  const card = document.createElement("div");
+  card.className = "result-card";
+  card.innerHTML = `
+    <div class="result-meta">
+      <span class="result-neighborhood">📍 ${neighborhood}</span>
+      ${isCitywide ? '<span class="citywide-tag">Citywide</span>' : ""}
     </div>
-    <div class="info-row">
-      <div class="info-label">Name</div>
-      <div class="info-value">${name}</div>
+
+    <div class="result-direction ${isMitigation ? "mitigation" : "aggravation"}">
+      ${isMitigation ? "↓ MITIGATION" : "↑ AGGRAVATION"}
+      <span class="confidence-badge">${confPct}% confidence</span>
     </div>
-    <div class="info-row">
-      <div class="info-label">Neighborhood</div>
-      <div class="info-value">${neighborhood}</div>
+
+    <div class="result-section">
+      <div class="section-label">Impact Weights</div>
+      <div class="weight-row">
+        <span class="weight-label">Heat Risk</span>
+        <div class="weight-bar-track"><div class="weight-bar-fill heat-w" style="width:${heatPct}%"></div></div>
+        <span class="weight-pct">${heatPct}%</span>
+      </div>
+      <div class="weight-row">
+        <span class="weight-label">Drought Risk</span>
+        <div class="weight-bar-track"><div class="weight-bar-fill drought-w" style="width:${droughtPct}%"></div></div>
+        <span class="weight-pct">${droughtPct}%</span>
+      </div>
+      <div class="weight-row">
+        <span class="weight-label">Urban Health</span>
+        <div class="weight-bar-track"><div class="weight-bar-fill urban-w" style="width:${urbanPct}%"></div></div>
+        <span class="weight-pct">${urbanPct}%</span>
+      </div>
     </div>
-    <div class="info-row">
-      <div class="info-label">District</div>
-      <div class="info-value">${district}</div>
+
+    ${topDrivers.length > 0 ? `
+    <div class="result-section">
+      <div class="section-label">Key Drivers</div>
+      ${driversHtml}
+    </div>` : ""}
+
+    <div class="result-section" style="margin-bottom:4px;">
+      <div class="section-label">City-wide Signal</div>
+      <div style="font-size:11px; color:${cityColor}; padding:4px 0;">${cityDir} &mdash; ${cityConfPct}% confidence</div>
+    </div>
+
+    <div class="map-hint">
+      ← Select a layer on the left to see the spatial impact
     </div>
   `;
 
-  content.innerHTML = html;
-  panel.style.display = "block";
-}
-
-function animateRouteToShelter(start, end) {
-  clearShelterVisualization();
-
-  let routeCoordinates = findRouteInIsochrones(start, end);
-
-  if (!routeCoordinates) {
-    document.getElementById("shelter-modal").style.display = "block";
-    handleRoutingError("Could not find a walkable path from your location on the available road network.");
-    return;
-  }
-
-  map.addSource("shelter-route", {
-    type: "geojson",
-    data: {
-      type: "Feature",
-      geometry: {
-        type: "LineString",
-        coordinates: routeCoordinates
-      }
-    }
-  });
-
-  map.addLayer({
-    id: "shelter-route-line",
-    type: "line",
-    source: "shelter-route",
-    paint: {
-      "line-color": "#ffa500",
-      "line-width": 4,
-      "line-opacity": 0.8
-    }
-  });
-
-  const startMarker = new mapboxgl.Marker({ color: "#00ff00" })
-    .setLngLat(start)
-    .addTo(map);
-
-  const endMarker = new mapboxgl.Marker({ color: "#ff0055" })
-    .setLngLat(end)
-    .addTo(map);
-
-  const animationDuration = 3000;
-  const steps = 100;
-  let currentStep = 0;
-
-  const el = document.createElement("div");
-  el.style.backgroundColor = "#fff";
-  el.style.width = "12px";
-  el.style.height = "12px";
-  el.style.borderRadius = "50%";
-  el.style.border = "2px solid #ffa500";
-  el.style.boxShadow = "0 0 10px rgba(255, 165, 0, 0.8)";
-
-  animationMarker = new mapboxgl.Marker(el)
-    .setLngLat(start)
-    .addTo(map);
-
-  const bounds = new mapboxgl.LngLatBounds();
-  routeCoordinates.forEach(coord => bounds.extend(coord));
-  map.fitBounds(bounds, { padding: 100, duration: 1000 });
-
-  const animate = () => {
-    if (currentStep >= steps) {
-      return;
-    }
-
-    const progress = currentStep / steps;
-
-    if (typeof turf !== 'undefined' && turf.lineString) {
-      const line = turf.lineString(routeCoordinates);
-      const lengthKm = turf.length(line, {units: 'kilometers'});
-      const alongPoint = turf.along(line, lengthKm * progress, {units: 'kilometers'});
-      animationMarker.setLngLat(alongPoint.geometry.coordinates);
-    } else {
-      const totalLength = routeCoordinates.length - 1;
-      const segmentIndex = Math.floor(progress * totalLength);
-      const segmentProgress = (progress * totalLength) - segmentIndex;
-
-      if (segmentIndex < totalLength) {
-        const startCoord = routeCoordinates[segmentIndex];
-        const endCoord = routeCoordinates[segmentIndex + 1];
-
-        const lng = startCoord[0] + (endCoord[0] - startCoord[0]) * segmentProgress;
-        const lat = startCoord[1] + (endCoord[1] - startCoord[1]) * segmentProgress;
-
-        animationMarker.setLngLat([lng, lat]);
-      }
-    }
-
-    currentStep++;
-    setTimeout(animate, animationDuration / steps);
-  };
-
-  animate();
-  window.shelterMarkers = [startMarker, endMarker];
+  messages.appendChild(card);
+  messages.scrollTop = messages.scrollHeight;
 }
 
 /* -------------------------
-   ROUTING LOGIC
+   UTILITY: Haversine Distance (km)
 -------------------------- */
-function findRouteInIsochrones(start, end) {
-  if (typeof turf === 'undefined' || !climateIsochrones) {
-    console.warn("Turf.js not loaded or isochrone data is missing. Returning null.");
-    return null;
-  }
+function getDistance(coord1, coord2) {
+  const R    = 6371;
+  const lat1 = coord1[1], lon1 = coord1[0];
+  const lat2 = coord2[1], lon2 = coord2[0];
 
-  const MAX_SNAPPING_DISTANCE_KM = 0.1;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
 
-  let roadFeatures = climateIsochrones.features.filter(f => f.geometry.type === "LineString");
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
 
-  if (roadFeatures.length === 0) {
-    try {
-      const flattened = turf.flatten(climateIsochrones);
-      roadFeatures = flattened.features.filter(f => f.geometry.type === "LineString");
-    } catch (e) {
-      console.error("Error flattening isochrones GeoJSON:", e);
-    }
-  }
-
-  if (roadFeatures.length === 0) {
-    console.warn("No LineString features found in isochrone data. Returning null.");
-    return null;
-  }
-
-  const roadSegments = turf.featureCollection(roadFeatures);
-  const startPoint = turf.point(start);
-  const endPoint = turf.point(end);
-
-  const snappedStartFeature = turf.nearestPointOnLine(roadSegments, startPoint);
-  const snappedEndFeature = turf.nearestPointOnLine(roadSegments, endPoint);
-
-  const snappedStart = snappedStartFeature.geometry.coordinates;
-  const snappedEnd = snappedEndFeature.geometry.coordinates;
-
-  const startSnapDistance = getDistance(start, snappedStart);
-  if (startSnapDistance > MAX_SNAPPING_DISTANCE_KM) {
-    console.warn(`Start location is too far from the road network (${startSnapDistance.toFixed(2)} km). Returning null.`);
-    return null;
-  }
-
-  const intermediateCoordinates = [];
-  const totalSteps = 20;
-
-  for (let i = 1; i < totalSteps; i++) {
-    const progress = i / totalSteps;
-    const intermediateTarget = [
-      snappedStart[0] + (snappedEnd[0] - snappedStart[0]) * progress,
-      snappedStart[1] + (snappedEnd[1] - snappedStart[1]) * progress,
-    ];
-
-    const intermediatePoint = turf.point(intermediateTarget);
-    const nearestRoadPointFeature = turf.nearestPointOnLine(roadSegments, intermediatePoint);
-    const nearestRoadPoint = nearestRoadPointFeature.geometry.coordinates;
-
-    if (turf.distance(intermediatePoint, nearestRoadPoint, {units: 'kilometers'}) < 0.05) {
-      intermediateCoordinates.push(nearestRoadPoint);
-    }
-  }
-
-  const finalRoute = [
-    start,
-    snappedStart,
-    ...intermediateCoordinates,
-    snappedEnd,
-    end
-  ];
-
-  const cleanedRoute = [];
-  finalRoute.forEach(coord => {
-    if (cleanedRoute.length === 0 || getDistance(cleanedRoute[cleanedRoute.length - 1], coord) > 0.005) {
-      cleanedRoute.push(coord);
-    }
-  });
-
-  if (cleanedRoute.length < 2) {
-    console.warn("Cleaned route has fewer than 2 points. Returning null.");
-    return null;
-  }
-
-  return cleanedRoute;
-}
-
-function clearShelterVisualization() {
-  if (map.getLayer("shelter-route-line")) {
-    map.removeLayer("shelter-route-line");
-  }
-  if (map.getSource("shelter-route")) {
-    map.removeSource("shelter-route");
-  }
-
-  if (window.shelterMarkers) {
-    window.shelterMarkers.forEach(marker => marker.remove());
-    window.shelterMarkers = null;
-  }
-
-  if (animationMarker) {
-    animationMarker.remove();
-    animationMarker = null;
-  }
-}
-
-function handleRoutingError(message) {
-  const statusDiv = document.getElementById("shelter-status");
-  statusDiv.textContent = message;
-  statusDiv.style.color = "#ff0055";
-
-  document.getElementById("shelter-info-panel").style.display = "none";
-  clearShelterVisualization();
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
