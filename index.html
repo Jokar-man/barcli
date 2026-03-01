@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Barcelona Climate Risk</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <link href="https://api.mapbox.com/mapbox-gl-js/v3.1.0/mapbox-gl.css" rel="stylesheet" />
+  <script src="https://api.mapbox.com/mapbox-gl-js/v3.1.0/mapbox-gl.js"></script>
+  <script src='https://unpkg.com/@turf/turf@6/turf.min.js'></script>
+
+  <link rel="stylesheet" href="style.css" />
+  <script src="main.js" defer></script>
+</head>
+<body>
+  <div id="map"></div>
+
+  <!-- LEFT PANEL -->
+  <div id="panel">
+    <h3>Climate Layers</h3>
+    <button data-field="heat">Heat</button>
+    <button data-field="SPEI">Drought</button>
+    <hr />
+    <button id="shelter-btn">Find Nearest Shelter</button>
+  </div>
+
+  <!-- MUNICIPALITY BUTTON (Top Right) -->
+  <div id="municipality-nav">
+    <button onclick="location.href='municipality.html'">
+      Municipality View →
+    </button>
+  </div>
+
+  <!-- RANKING (Bottom Right) -->
+  <div id="rank-panel">
+    <h4>Top 5 Vulnerable Neighborhoods</h4>
+    <div id="rank-popup">
+      <div style="color:#666; font-style:italic; font-size:13px; padding:10px;">
+        Select a layer to see top neighborhoods...
+      </div>
+    </div>
+  </div>
+
+  <!-- LEGEND & INFO (Bottom Left) -->
+  <div id="info-legend">
+    <div style="display:flex; justify-content:space-between; align-items:center; color:#fff; font-weight:700;">
+      <span>Vulnerability Intensity</span>
+    </div>
+    <div class="legend-gradient"></div>
+    <div class="legend-labels">
+      <span>Low</span>
+      <span>High</span>
+    </div>
+
+    <div class="radius-control">
+      <div class="slider-section">
+        <div class="radius-header">
+          <span>Focus Radius</span>
+          <span id="radius-val">5.0 km</span>
+        </div>
+        <input type="range" id="radius-slider" min="1" max="10" step="0.5" value="5">
+        <div style="color:#888; font-size:10px; margin-top:4px;">From City Center (Plaça Catalunya)</div>
+      </div>
+      <div id="info-icon">i</div>
+    </div>
+  </div>
+
+  <!-- INFO MODAL -->
+  <div id="info-modal">
+    <span class="close-modal" onclick="document.getElementById('info-modal').style.display='none'">&times;</span>
+    <h4>Data Sources & Information</h4>
+    <p>
+      This map visualizes combined vulnerability in Barcelona based on multiple factors:
+    </p>
+    <p>
+      <strong>1. Combined Heat (UHI + LST):</strong> An average index derived from the Urban Heat Island (UHI) effect and Land Surface Temperature (LST) data from Google Earth Engine (2021 to 2024).
+    </p>
+    <p>
+      <strong>2. Drought (SPEI):</strong> Standardized Precipitation Evapotranspiration Index, indicating hydrological stress from Google Earth Engine (2023).
+    </p>
+    <p>
+      All data points are aggregated to local neighborhood areas and normalized to create a composite vulnerability score (0-1).
+    </p>
+    <p>
+      <strong>City Center Reference:</strong> Plaça Catalunya (2.1734°E, 41.3851°N)
+    </p>
+    <p style="margin-top:20px; font-size:12px; color:#666;">
+      <a href="https://www.mapbox.com/" target="_blank">Map visuals powered by Mapbox.</a>
+    </p>
+  </div>
+
+  <!-- SHELTER MODAL -->
+  <div id="shelter-modal">
+    <span class="close-modal" onclick="document.getElementById('shelter-modal').style.display='none'">&times;</span>
+    <h4>Find Nearest Climate Shelter</h4>
+    <p style="color:#ccc; font-size:13px; margin-bottom:15px;">
+      Enter your address or click on the map to find the nearest climate shelter.
+    </p>
+    <input type="text" id="location-input" placeholder="Enter your address (e.g., Gran Via, 100)">
+    <button onclick="findNearestShelter()">Find Shelter</button>
+    <div id="shelter-status" style="margin-top:15px; color:#aaa; font-size:13px;"></div>
+  </div>
+
+  <!-- SHELTER INFO PANEL -->
+  <div id="shelter-info-panel">
+    <span id="close-shelter-panel">&times;</span>
+    <h4>Nearest Climate Shelter</h4>
+    <div id="shelter-info-content"></div>
+  </div>
+
+</body>
+</html>
