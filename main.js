@@ -134,8 +134,10 @@ map.on("load", async () => {
     console.error("Could not load cadastral buildings:", err);
   }
 
-  removeSymbolLayers(map);
+  // Buildings must be added BEFORE symbol layers are removed,
+  // because "waterway-label" (the insert-before anchor) is itself a symbol layer.
   addBuildingLayers(map, cadastralData, "main");
+  removeSymbolLayers(map);
 
   // ── Load vulnerability points ─────────────────
   try {
@@ -166,8 +168,8 @@ map.on("load", async () => {
 
   await new Promise(res => mapImpact.once("load", res));
 
-  removeSymbolLayers(mapImpact);
   addBuildingLayers(mapImpact, cadastralData, "impact");
+  removeSymbolLayers(mapImpact);
 
   // Impact data source starts empty; populated after AI analysis
   mapImpact.addSource("points-impact", {
