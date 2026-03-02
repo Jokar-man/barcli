@@ -407,44 +407,68 @@ function updateVisualization() {
 function updateImpactSource() {
   if (!mapImpact) return;
 
-  const local  = impactData.neighborhood_level;
-  const city   = impactData.city_level;
+  const local      = impactData.neighborhood_level;
+  const city       = impactData.city_level;
+  const isCitywide = impactData.is_citywide || false;
+  const targetBarri = (impactData.analyzed_neighborhood || "").toLowerCase().trim();
 
   const δ_local = local.direction === "Aggravation" ? 1 : -1;
   const δ_city  = city.direction  === "Aggravation" ? 1 : -1;
 
-  // blend ∈ [−1, +1]; positive = net aggravation, negative = net mitigation
-  const blend = ALPHA * δ_local * local.confidence + (1 - ALPHA) * δ_city * city.confidence;
+  // Macro-impact weights per level (city falls back to local if not provided)
+  const lMacro = local.macro_impact || {};
+  const cMacro = city.macro_impact  || lMacro;
 
-  const macro = local.macro_impact;
-  const w_H = macro["Heat risk"]    || 0;
-  const w_D = macro["Drought risk"] || 0;
-  const w_P = macro["Urban health"] || 0;
-
-  const weightOf = { heat: w_H, SPEI: w_D, urban_health: w_P };
+  const localWeightOf = {
+    heat:         lMacro["Heat risk"]    || 0,
+    SPEI:         lMacro["Drought risk"] || 0,
+    urban_health: lMacro["Urban health"] || 0
+  };
+  const cityWeightOf = {
+    heat:         cMacro["Heat risk"]    || 0,
+    SPEI:         cMacro["Drought risk"] || 0,
+    urban_health: cMacro["Urban health"] || 0
+  };
 
   const impactFeatures = points.features.map(f => {
     const p = f.properties;
+
+    // Match this point's neighborhood against the AI-detected target
+    const barriName = (p.N_Barri || "").toLowerCase().trim();
+    const isInNeighborhood = isCitywide
+      || targetBarri === ""
+      || barriName.includes(targetBarri)
+      || targetBarri.includes(barriName);
 
     let V_sum = 0;
     let count = 0;
 
     activeFields.forEach(k => {
-      const V_base = normalize(computeRaw(p, k), k);   // same as original _value for single field
-      // Dimension-specific updated vulnerability
-      const V_new  = Math.min(1, Math.max(0, V_base * (1 + BETA * blend * weightOf[k])));
+      const V_base = normalize(computeRaw(p, k), k);
+
+      let V_new;
+      if (isInNeighborhood) {
+        // Full α-blend of local and city effects for the target neighbourhood
+        const I_local = δ_local * local.confidence * localWeightOf[k];
+        const I_city  = δ_city  * city.confidence  * cityWeightOf[k];
+        const I_dim   = ALPHA * I_local + (1 - ALPHA) * I_city;
+        V_new = Math.min(1, Math.max(0, V_base + BETA * I_dim * V_base));
+      } else {
+        // City-level spillover only for points outside the target neighbourhood
+        const I_city = δ_city * city.confidence * cityWeightOf[k];
+        V_new = Math.min(1, Math.max(0, V_base + BETA * I_city * V_base));
+      }
+
       V_sum += V_new;
       count++;
     });
-
-    const V_impact = count > 0 ? V_sum / count : 0;
 
     return {
       type: "Feature",
       geometry: f.geometry,
       properties: {
-        // Use _value so the same HALO_COLOR / CORE_COLOR expressions work
-        _value:   p._inFocus ? V_impact : 0,
+        // All points visible on impact map — no circular radius clip
+        _value:   count > 0 ? V_sum / count : 0,
         _inFocus: p._inFocus
       }
     };
