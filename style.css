@@ -25,7 +25,7 @@ html, body {
   bottom: 0;
   width: 100%;
   pointer-events: none;
-  display: none;
+  clip-path: inset(0 0 0 100%);
 }
 
 /* =====================

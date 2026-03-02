@@ -13,7 +13,7 @@ let mapImpact = null;
 // AI impact state
 let impactData = null;
 const ALPHA = 0.6;   // local vs citywide blend  (SCIENTIFIC_WORKFLOW α)
-const BETA  = 0.1;   // policy strength scaling   (SCIENTIFIC_WORKFLOW β)
+const BETA  = 0.5;   // policy strength scaling   (SCIENTIFIC_WORKFLOW β)
 const AI_API_URL = "https://jokar-man-urban-climate-model.hf.space";
 
 // Compare divider drag state
@@ -54,6 +54,9 @@ function removeSymbolLayers(m) {
 }
 
 function addBuildingLayers(m, data, prefix) {
+  // Use "waterway-label" as insert-before anchor only if it still exists
+  const beforeLayer = m.getLayer("waterway-label") ? "waterway-label" : undefined;
+
   if (data) {
     m.addSource(`cadastral-${prefix}`, { type: "geojson", data });
     m.addLayer({
@@ -66,7 +69,7 @@ function addBuildingLayers(m, data, prefix) {
         "fill-extrusion-base":    0,
         "fill-extrusion-opacity": 0.28
       }
-    }, "waterway-label");
+    }, beforeLayer);
   }
 
   m.addLayer({
@@ -82,7 +85,7 @@ function addBuildingLayers(m, data, prefix) {
       "fill-extrusion-base":    ["get", "min_height"],
       "fill-extrusion-opacity": 0.1
     }
-  }, "waterway-label");
+  }, beforeLayer);
 }
 
 function addGlowLayers(m, sourceId, prefix) {
@@ -118,12 +121,15 @@ const map = new mapboxgl.Map({
   style:     "mapbox://styles/mapbox/dark-v11",
   center:    CENTER,
   zoom:      13.5,
-  pitch:     60,
-  bearing:   -20,
+  pitch:     0,
+  bearing:   0,
+  maxPitch:  0,
   antialias: true,
   minZoom:   10,
   maxZoom:   18
 });
+map.dragRotate.disable();
+map.touchZoomRotate.disableRotation();
 
 map.on("load", async () => {
 
@@ -160,8 +166,9 @@ map.on("load", async () => {
     style:       "mapbox://styles/mapbox/dark-v11",
     center:      CENTER,
     zoom:        13.5,
-    pitch:       60,
-    bearing:     -20,
+    pitch:       0,
+    bearing:     0,
+    maxPitch:    0,
     antialias:   true,
     interactive: false    // user interacts only with the main map
   });
@@ -341,15 +348,17 @@ function showCompare() {
   const impactEl   = document.getElementById("map-impact");
   const dividerEl  = document.getElementById("compare-divider");
 
-  impactEl.style.display    = "block";
   impactEl.style.clipPath   = `inset(0 0 0 ${dividerX}px)`;
-  dividerEl.style.display   = "block";
+  dividerEl.style.display   = "flex";
   dividerEl.style.left      = dividerX + "px";
+
+  // Trigger canvas resize if first reveal
+  if (mapImpact) mapImpact.resize();
 }
 
 function hideCompare() {
-  document.getElementById("map-impact").style.display   = "none";
-  document.getElementById("compare-divider").style.display = "none";
+  document.getElementById("map-impact").style.clipPath      = "inset(0 0 0 100%)";
+  document.getElementById("compare-divider").style.display  = "none";
 }
 
 /* ================================================
