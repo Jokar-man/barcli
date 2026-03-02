@@ -7,6 +7,10 @@ html, body {
   overflow: hidden;
 }
 
+/* =====================
+   MAPS
+   ===================== */
+
 #map {
   position: absolute;
   top: 0;
@@ -14,7 +18,96 @@ html, body {
   width: 100%;
 }
 
-/* LEFT PANEL */
+/* Impact map: same footprint as #map, clipped from left by JS */
+#map-impact {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 100%;
+  pointer-events: none;
+  display: none;
+}
+
+/* =====================
+   COMPARE DIVIDER
+   ===================== */
+
+#compare-divider {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 44px;            /* wide touch target */
+  transform: translateX(-50%);
+  z-index: 25;
+  cursor: ew-resize;
+  display: none;
+  user-select: none;
+}
+
+/* Visual line centred inside the touch target */
+#compare-divider::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 2px;
+  background: rgba(255, 255, 255, 0.75);
+  pointer-events: none;
+}
+
+#compare-handle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 36px;
+  height: 36px;
+  background: rgba(10, 10, 10, 0.92);
+  border: 2px solid rgba(255, 255, 255, 0.7);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 13px;
+  letter-spacing: -2px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+}
+
+.cmp-label {
+  position: absolute;
+  top: 68px;
+  background: rgba(10, 10, 10, 0.82);
+  backdrop-filter: blur(8px);
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.cmp-left {
+  right: calc(50% + 10px);
+  color: #00eaff;
+  border: 1px solid rgba(0, 234, 255, 0.25);
+}
+
+.cmp-right {
+  left: calc(50% + 10px);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+/* =====================
+   LEFT PANEL
+   ===================== */
+
 #panel {
   position: absolute;
   top: 20px;
@@ -63,7 +156,10 @@ html, body {
   box-shadow: 0 0 15px rgba(255, 0, 85, 0.4);
 }
 
-/* LEGEND (Bottom Left) */
+/* =====================
+   LEGEND (Bottom Left)
+   ===================== */
+
 #info-legend {
   position: absolute;
   bottom: 30px;
@@ -88,10 +184,13 @@ html, body {
 .legend-gradient {
   width: 100%;
   height: 10px;
-  background: linear-gradient(90deg, rgba(0,120,255,0.2), rgba(0,255,180,0.4), rgba(255,255,0,0.6), rgba(255,0,0,0.8));
+  background: linear-gradient(90deg,
+    rgba(0,120,255,0.2),
+    rgba(0,255,180,0.4),
+    rgba(255,255,0,0.6),
+    rgba(255,0,0,0.8));
   border-radius: 5px;
   margin-top: 5px;
-  transition: background 0.4s ease;
 }
 
 .legend-labels {
@@ -161,7 +260,10 @@ input[type=range] {
   background: rgba(0, 234, 255, 0.1);
 }
 
-/* INFO MODAL */
+/* =====================
+   INFO MODAL
+   ===================== */
+
 #info-modal {
   position: fixed;
   top: 50%;
@@ -268,14 +370,8 @@ input[type=range] {
   gap: 10px;
 }
 
-#chat-messages::-webkit-scrollbar {
-  width: 4px;
-}
-
-#chat-messages::-webkit-scrollbar-track {
-  background: transparent;
-}
-
+#chat-messages::-webkit-scrollbar { width: 4px; }
+#chat-messages::-webkit-scrollbar-track { background: transparent; }
 #chat-messages::-webkit-scrollbar-thumb {
   background: rgba(255,255,255,0.08);
   border-radius: 2px;
@@ -314,8 +410,8 @@ input[type=range] {
 
 @keyframes shake {
   0%, 100% { transform: translateX(0); }
-  25% { transform: translateX(-5px); }
-  75% { transform: translateX(5px); }
+  25%       { transform: translateX(-5px); }
+  75%       { transform: translateX(5px); }
 }
 
 #analyse-btn {
@@ -345,7 +441,10 @@ input[type=range] {
   box-shadow: none;
 }
 
-/* Chat message types */
+/* =====================
+   CHAT MESSAGES
+   ===================== */
+
 .chat-welcome {
   color: #555;
   font-size: 11px;
@@ -356,29 +455,11 @@ input[type=range] {
   background: rgba(255,255,255,0.02);
 }
 
-.chat-welcome p {
-  margin: 0 0 6px;
-}
-
-.chat-welcome ul {
-  margin: 4px 0 6px;
-  padding-left: 16px;
-}
-
-.chat-welcome li {
-  margin-bottom: 3px;
-  color: #4a4a4a;
-}
-
-.chat-welcome strong {
-  color: #00eaff;
-}
-
-.welcome-arrow {
-  color: #00eaff;
-  font-size: 16px;
-  margin-bottom: 6px;
-}
+.chat-welcome p  { margin: 0 0 6px; }
+.chat-welcome ul { margin: 4px 0 6px; padding-left: 16px; }
+.chat-welcome li { margin-bottom: 3px; color: #4a4a4a; }
+.chat-welcome strong { color: #00eaff; }
+.welcome-arrow { color: #00eaff; font-size: 16px; margin-bottom: 6px; }
 
 .chat-user-msg {
   background: rgba(0, 234, 255, 0.07);
@@ -398,7 +479,6 @@ input[type=range] {
   align-items: center;
   gap: 5px;
   padding: 10px 12px;
-  align-self: flex-start;
 }
 
 .chat-thinking span {
@@ -414,7 +494,7 @@ input[type=range] {
 
 @keyframes thinking-pulse {
   0%, 80%, 100% { opacity: 0.2; transform: scale(0.75); }
-  40% { opacity: 1; transform: scale(1); }
+  40%           { opacity: 1;   transform: scale(1); }
 }
 
 .chat-error {
@@ -437,7 +517,6 @@ input[type=range] {
   border-radius: 10px;
   padding: 14px;
   font-size: 12px;
-  align-self: flex-start;
   width: 100%;
   box-sizing: border-box;
   animation: fadeInUp 0.3s ease;
@@ -445,7 +524,7 @@ input[type=range] {
 
 @keyframes fadeInUp {
   from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 .result-meta {
@@ -456,9 +535,7 @@ input[type=range] {
   font-size: 11px;
 }
 
-.result-neighborhood {
-  color: #888;
-}
+.result-neighborhood { color: #888; }
 
 .citywide-tag {
   background: rgba(0, 234, 255, 0.08);

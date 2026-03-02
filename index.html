@@ -13,7 +13,19 @@
   <script src="main.js" defer></script>
 </head>
 <body>
+
+  <!-- MAIN MAP (baseline / original data) -->
   <div id="map"></div>
+
+  <!-- IMPACT MAP (post-policy V_new, clipped to right of divider) -->
+  <div id="map-impact"></div>
+
+  <!-- COMPARE DIVIDER (only visible in impact mode) -->
+  <div id="compare-divider">
+    <div id="compare-handle">&#8612;&#8614;</div>
+    <div class="cmp-label cmp-left">Baseline</div>
+    <div class="cmp-label cmp-right">After Policy</div>
+  </div>
 
   <!-- LEFT PANEL -->
   <div id="panel">
@@ -51,24 +63,12 @@
   <div id="info-modal">
     <span class="close-modal" onclick="document.getElementById('info-modal').style.display='none'">&times;</span>
     <h4>Data Sources & Information</h4>
-    <p>
-      This map visualizes combined vulnerability in Barcelona based on multiple factors:
-    </p>
-    <p>
-      <strong>1. Combined Heat (UHI + LST):</strong> An average index derived from the Urban Heat Island (UHI) effect and Land Surface Temperature (LST) data from Google Earth Engine (2021 to 2024).
-    </p>
-    <p>
-      <strong>2. Drought (SPEI):</strong> Standardized Precipitation Evapotranspiration Index, indicating hydrological stress from Google Earth Engine (2023).
-    </p>
-    <p>
-      <strong>3. Urban Health:</strong> A composite index of immigrant density, inverted income level (lower income = higher vulnerability), and general population density.
-    </p>
-    <p>
-      All data points are aggregated to local neighborhood areas and normalized to create a composite vulnerability score (0–1).
-    </p>
-    <p>
-      <strong>City Center Reference:</strong> Plaça Catalunya (2.1734°E, 41.3851°N)
-    </p>
+    <p>This map visualizes vulnerability in Barcelona based on multiple factors:</p>
+    <p><strong>1. Combined Heat (UHI + LST):</strong> Average of Urban Heat Island effect and Land Surface Temperature from Google Earth Engine (2021–2024).</p>
+    <p><strong>2. Drought (SPEI):</strong> Standardized Precipitation Evapotranspiration Index, indicating hydrological stress (2023).</p>
+    <p><strong>3. Urban Health:</strong> Composite of immigrant density, inverted income level (lower income = higher vulnerability), and population density.</p>
+    <p>All data points are normalised to a vulnerability score 0–1.</p>
+    <p><strong>City Center Reference:</strong> Plaça Catalunya (2.1734°E, 41.3851°N)</p>
     <p style="margin-top:20px; font-size:12px; color:#666;">
       <a href="https://www.mapbox.com/" target="_blank">Map visuals powered by Mapbox.</a>
     </p>
@@ -78,7 +78,7 @@
   <div id="chat-panel">
     <div id="chat-header">
       <h3>Policy Simulator</h3>
-      <p>Describe an urban intervention or policy. The AI will analyse its spatial climate impact across Barcelona neighbourhoods.</p>
+      <p>Describe an urban policy or intervention. The AI analyses its spatial climate impact across Barcelona neighbourhoods.</p>
     </div>
 
     <div id="chat-messages">
@@ -90,7 +90,7 @@
           <li>"Reducing green spaces in Eixample for new construction"</li>
           <li>"Water-sensitive urban design in Sant Martí"</li>
         </ul>
-        <p>After clicking <strong>Analyse</strong>, select a layer on the left to see its spatial impact on the map.</p>
+        <p>After clicking <strong>Analyse</strong>, select a layer on the left. A <strong>draggable slider</strong> will appear on the map showing Baseline vs After Policy.</p>
       </div>
     </div>
 
