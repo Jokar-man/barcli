@@ -430,6 +430,22 @@ function updateImpactSource() {
     urban_health: cMacro["Urban health"] || 0
   };
 
+  // ── Test trace (visible in browser console) ─────────────────────────────
+  console.group("updateImpactSource");
+  console.log("target:", targetBarri, "| isCitywide:", isCitywide);
+  console.log("δ_local:", δ_local, "c_local:", local.confidence,
+              "| δ_city:", δ_city, "c_city:", city.confidence);
+  console.log("localWeightOf:", localWeightOf);
+  console.log("cityWeightOf:", cityWeightOf);
+  activeFields.forEach(k => {
+    const I_local = δ_local * local.confidence * localWeightOf[k];
+    const I_city  = δ_city  * city.confidence  * cityWeightOf[k];
+    const I_dim   = ALPHA * I_local + (1 - ALPHA) * I_city;
+    console.log(`  [${k}] nbhd delta=±${(BETA * I_dim).toFixed(3)}`
+              + ` | city spillover=±${(BETA * (1-ALPHA) * I_city).toFixed(3)}`);
+  });
+  console.groupEnd();
+
   const impactFeatures = points.features.map(f => {
     const p = f.properties;
 
@@ -448,15 +464,17 @@ function updateImpactSource() {
 
       let V_new;
       if (isInNeighborhood) {
-        // Full α-blend of local and city effects for the target neighbourhood
+        // Full α-blend: delta is directly proportional to weight (no × V_base)
+        // so Heat w=0.7 produces 2.3× more change than Drought w=0.3
         const I_local = δ_local * local.confidence * localWeightOf[k];
         const I_city  = δ_city  * city.confidence  * cityWeightOf[k];
         const I_dim   = ALPHA * I_local + (1 - ALPHA) * I_city;
-        V_new = Math.min(1, Math.max(0, V_base + BETA * I_dim * V_base));
+        V_new = Math.min(1, Math.max(0, V_base + BETA * I_dim));
       } else {
-        // City-level spillover only for points outside the target neighbourhood
+        // Scaled by (1−α): city spillover is 40% of neighbourhood intensity,
+        // making the two zones visually distinct even when confidences are similar
         const I_city = δ_city * city.confidence * cityWeightOf[k];
-        V_new = Math.min(1, Math.max(0, V_base + BETA * I_city * V_base));
+        V_new = Math.min(1, Math.max(0, V_base + BETA * (1 - ALPHA) * I_city));
       }
 
       V_sum += V_new;
