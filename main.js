@@ -16,6 +16,18 @@ const ALPHA = 0.6;   // local vs citywide blend  (SCIENTIFIC_WORKFLOW α)
 const BETA  = 0.5;   // policy strength scaling   (SCIENTIFIC_WORKFLOW β)
 const AI_API_URL = "https://jokar-man-urban-climate-model.hf.space";
 
+// Per-dimension δ magnitudes derived from Barcelona historical policy CSVs.
+// heat  = avg delta_summer_C across category policies (+/- = warming/cooling)
+// SPEI  = avg vulnerability delta = -avg(delta_spei)  (+/- = drought aggravation/mitigation)
+// urban_health = mean of heat and SPEI vulnerability signals
+const CATEGORY_DELTAS = {
+  urban:      { heat:  0.797, SPEI:  0.386, urban_health:  0.592 },
+  green:      { heat:  0.517, SPEI:  0.310, urban_health:  0.414 },
+  water:      { heat: -0.482, SPEI:  0.020, urban_health: -0.231 },
+  energy:     { heat:  0.607, SPEI: -0.323, urban_health:  0.142 },
+  governance: { heat:  0.436, SPEI:  0.274, urban_health:  0.355 }
+};
+
 // Compare divider drag state
 let dividerX   = 0;
 let isDragging = false;
@@ -412,8 +424,17 @@ function updateImpactSource() {
   const isCitywide = impactData.is_citywide || false;
   const targetBarri = (impactData.analyzed_neighborhood || "").toLowerCase().trim();
 
-  const δ_local = local.direction === "Aggravation" ? 1 : -1;
-  const δ_city  = city.direction  === "Aggravation" ? 1 : -1;
+  const selectedCategory = (document.getElementById("policy-category")?.value || "").trim();
+  const catDeltas = CATEGORY_DELTAS[selectedCategory] || null;
+
+  // δ per dimension: use historical category averages when a type is selected,
+  // otherwise fall back to binary ±1 from AI direction
+  const δ_local_for = k => catDeltas
+    ? catDeltas[k]
+    : (local.direction === "Aggravation" ? 1 : -1);
+  const δ_city_for  = k => catDeltas
+    ? catDeltas[k]
+    : (city.direction  === "Aggravation" ? 1 : -1);
 
   // Macro-impact weights per level (city falls back to local if not provided)
   const lMacro = local.macro_impact || {};
@@ -433,16 +454,16 @@ function updateImpactSource() {
   // ── Test trace (visible in browser console) ─────────────────────────────
   console.group("updateImpactSource");
   console.log("target:", targetBarri, "| isCitywide:", isCitywide);
-  console.log("δ_local:", δ_local, "c_local:", local.confidence,
-              "| δ_city:", δ_city, "c_city:", city.confidence);
+  console.log("category:", selectedCategory || "none (binary ±1)",
+              "| c_local:", local.confidence, "| c_city:", city.confidence);
   console.log("localWeightOf:", localWeightOf);
   console.log("cityWeightOf:", cityWeightOf);
   activeFields.forEach(k => {
-    const I_local = δ_local * local.confidence * localWeightOf[k];
-    const I_city  = δ_city  * city.confidence  * cityWeightOf[k];
+    const I_local = δ_local_for(k) * local.confidence * localWeightOf[k];
+    const I_city  = δ_city_for(k)  * city.confidence  * cityWeightOf[k];
     const I_dim   = ALPHA * I_local + (1 - ALPHA) * I_city;
-    console.log(`  [${k}] nbhd delta=±${(BETA * I_dim).toFixed(3)}`
-              + ` | city spillover=±${(BETA * (1-ALPHA) * I_city).toFixed(3)}`);
+    console.log(`  [${k}] δ=${δ_local_for(k).toFixed(3)} nbhd delta=${(BETA * I_dim).toFixed(3)}`
+              + ` | city spillover=${(BETA * (1-ALPHA) * I_city).toFixed(3)}`);
   });
   console.groupEnd();
 
@@ -466,14 +487,14 @@ function updateImpactSource() {
       if (isInNeighborhood) {
         // Full α-blend: delta is directly proportional to weight (no × V_base)
         // so Heat w=0.7 produces 2.3× more change than Drought w=0.3
-        const I_local = δ_local * local.confidence * localWeightOf[k];
-        const I_city  = δ_city  * city.confidence  * cityWeightOf[k];
+        const I_local = δ_local_for(k) * local.confidence * localWeightOf[k];
+        const I_city  = δ_city_for(k)  * city.confidence  * cityWeightOf[k];
         const I_dim   = ALPHA * I_local + (1 - ALPHA) * I_city;
         V_new = Math.min(1, Math.max(0, V_base + BETA * I_dim));
       } else {
         // Scaled by (1−α): city spillover is 40% of neighbourhood intensity,
         // making the two zones visually distinct even when confidences are similar
-        const I_city = δ_city * city.confidence * cityWeightOf[k];
+        const I_city = δ_city_for(k) * city.confidence * cityWeightOf[k];
         V_new = Math.min(1, Math.max(0, V_base + BETA * (1 - ALPHA) * I_city));
       }
 
@@ -602,6 +623,22 @@ function renderChatResult(aiResult) {
   const cityConf  = Math.round(city.confidence * 100);
   const cityColor = city.direction === "Mitigation" ? "#00cc66" : "#ff4466";
 
+  const cityDrivers    = city.drivers || {};
+  const topCityDrivers = Object.entries(cityDrivers)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 4);
+  const cityDriversHtml = topCityDrivers.map(([name, val]) => {
+    const pct = Math.round(val * 100);
+    return `
+      <div class="driver-row">
+        <span class="driver-label">${name}</span>
+        <div class="driver-bar-track">
+          <div class="driver-bar-fill city-driver-fill" style="width:${pct}%"></div>
+        </div>
+        <span class="driver-pct">${pct}%</span>
+      </div>`;
+  }).join("");
+
   const card = document.createElement("div");
   card.className = "result-card";
   card.innerHTML = `
@@ -642,9 +679,12 @@ function renderChatResult(aiResult) {
 
     <div class="result-section" style="margin-bottom:4px;">
       <div class="section-label">City-wide Signal</div>
-      <div style="font-size:11px; color:${cityColor}; padding:4px 0;">
+      <div style="font-size:11px; color:${cityColor}; padding:4px 0 6px;">
         ${cityDir} &mdash; ${cityConf}% confidence
       </div>
+      ${topCityDrivers.length > 0 ? `
+      <div class="city-drivers-label">City Drivers</div>
+      ${cityDriversHtml}` : ""}
     </div>
 
     <div class="map-hint">

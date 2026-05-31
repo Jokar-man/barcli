@@ -95,6 +95,17 @@
     </div>
 
     <div id="chat-input-area">
+      <div class="category-select-wrap">
+        <label for="policy-category">Policy Type</label>
+        <select id="policy-category">
+          <option value="">— select type (optional) —</option>
+          <option value="urban">Urban / Infrastructure</option>
+          <option value="green">Green / Nature</option>
+          <option value="water">Water / Drainage</option>
+          <option value="energy">Energy</option>
+          <option value="governance">Governance / Policy</option>
+        </select>
+      </div>
       <textarea id="policy-input" placeholder="e.g. Installing green roofs in Gràcia to reduce the urban heat island effect..." rows="3"></textarea>
       <button id="analyse-btn" onclick="analysePolicy()">Analyse</button>
     </div>

@@ -1,0 +1,26 @@
+year,label,category,summer_before,summer_after,delta_summer_C
+1985,PERI (Old City Reform),urban,22.27,22.58,0.311
+1992,Olympic Coastal Recovery,water,23.12,23.2,0.078
+1995,Aalborg Charter,governance,22.81,22.61,-0.2
+1998,Citizen Commitment for Sustainability,governance,22.5,23.04,0.544
+1999,Thermal Solar Byelaw,energy,22.61,22.86,0.244
+2002,Energy Improvement Plan (PMEB),energy,23.04,24.67,1.622
+2006,Comprehensive Sewer Plan (PICBA),water,24.67,23.4,-1.267
+2008,Covenant of Mayors (EU),governance,23.43,23.2,-0.233
+2009,Llobregat Desalination Plant,water,23.21,22.96,-0.256
+2009,SUDS Implementation (Joan Raventós),green,23.21,22.96,-0.256
+2011,Environmental Ordinance,governance,23.64,23.2,-0.444
+2013,Green Infrastructure & Biodiversity Plan,green,22.96,23.44,0.489
+2014,Urban Mobility Plan (PMU),urban,22.92,24.0,1.078
+2015,COP21 Paris Commitment,governance,23.2,23.99,0.789
+2016,Poblenou Superblock Pilot,urban,23.33,24.14,0.811
+2017,Tree Master Plan (2017–2037),green,23.44,23.96,0.511
+2018,Climate Plan 2018–2030,governance,24.0,23.96,-0.044
+2018,Barcelona Energia,energy,24.0,23.96,-0.044
+2019,C40 Cities Vice-Presidency,governance,23.99,24.64,0.656
+2020,Climate Emergency Declaration,governance,24.14,25.12,0.978
+2020,Low Emission Zone (ZBE),urban,24.14,25.12,0.978
+2020,Climate Shelters Network,governance,24.14,25.12,0.978
+2021,Barcelona Nature Plan 2030,green,23.96,25.28,1.322
+2022,EU 100 Climate-Neutral Cities,governance,23.96,25.29,1.333
+2023,Consell de Cent Green Axis,urban,24.64,25.45,0.806
