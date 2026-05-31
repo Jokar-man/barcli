@@ -73,31 +73,15 @@ function addBuildingLayers(m, data, prefix) {
     m.addSource(`cadastral-${prefix}`, { type: "geojson", data });
     m.addLayer({
       id: `3d-cadastral-${prefix}`,
-      type: "fill-extrusion",
+      type: "fill",
       source: `cadastral-${prefix}`,
       paint: {
-        "fill-extrusion-color":   "#00eaff",
-        "fill-extrusion-height":  ["*", ["get", "numberOfFloorsAboveGround"], 3.5],
-        "fill-extrusion-base":    0,
-        "fill-extrusion-opacity": 0.28
+        "fill-color":   "#00eaff",
+        "fill-opacity": 0.12,
+        "fill-outline-color": "rgba(0, 234, 255, 0.35)"
       }
     }, beforeLayer);
   }
-
-  m.addLayer({
-    id: `3d-default-${prefix}`,
-    source: "composite",
-    "source-layer": "building",
-    filter: ["all", ["has", "height"], ["has", "min_height"]],
-    type: "fill-extrusion",
-    minzoom: 13,
-    paint: {
-      "fill-extrusion-color":   "#00eaff",
-      "fill-extrusion-height":  ["get", "height"],
-      "fill-extrusion-base":    ["get", "min_height"],
-      "fill-extrusion-opacity": 0.1
-    }
-  }, beforeLayer);
 }
 
 function addGlowLayers(m, sourceId, prefix) {
