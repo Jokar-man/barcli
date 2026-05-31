@@ -16,16 +16,18 @@ const ALPHA = 0.6;   // local vs citywide blend  (SCIENTIFIC_WORKFLOW α)
 const BETA  = 0.5;   // policy strength scaling   (SCIENTIFIC_WORKFLOW β)
 const AI_API_URL = "https://jokar-man-urban-climate-model.hf.space";
 
-// Per-dimension δ magnitudes derived from Barcelona historical policy CSVs.
-// heat  = avg delta_summer_C across category policies (+/- = warming/cooling)
-// SPEI  = avg vulnerability delta = -avg(delta_spei)  (+/- = drought aggravation/mitigation)
-// urban_health = mean of heat and SPEI vulnerability signals
+// Per-dimension impact magnitudes (absolute values) derived from Barcelona historical policy CSVs.
+// Values represent how strongly each policy category historically moved each dimension,
+// regardless of direction. The AI's direction (Mitigation/Aggravation) controls the sign.
+// heat         = |avg delta_summer_C| across category policies
+// SPEI         = |avg delta_spei vulnerability| across category policies
+// urban_health = mean of heat and SPEI magnitudes
 const CATEGORY_DELTAS = {
-  urban:      { heat:  0.797, SPEI:  0.386, urban_health:  0.592 },
-  green:      { heat:  0.517, SPEI:  0.310, urban_health:  0.414 },
-  water:      { heat: -0.482, SPEI:  0.020, urban_health: -0.231 },
-  energy:     { heat:  0.607, SPEI: -0.323, urban_health:  0.142 },
-  governance: { heat:  0.436, SPEI:  0.274, urban_health:  0.355 }
+  urban:      { heat: 0.797, SPEI: 0.386, urban_health: 0.592 },
+  green:      { heat: 0.517, SPEI: 0.310, urban_health: 0.414 },
+  water:      { heat: 0.482, SPEI: 0.020, urban_health: 0.231 },
+  energy:     { heat: 0.607, SPEI: 0.323, urban_health: 0.142 },
+  governance: { heat: 0.436, SPEI: 0.274, urban_health: 0.355 }
 };
 
 // Compare divider drag state
@@ -411,14 +413,17 @@ function updateImpactSource() {
   const selectedCategory = (document.getElementById("policy-category")?.value || "").trim();
   const catDeltas = CATEGORY_DELTAS[selectedCategory] || null;
 
-  // δ per dimension: use historical category averages when a type is selected,
-  // otherwise fall back to binary ±1 from AI direction
+  // AI direction controls sign; category magnitude (from CSV) scales how much.
+  // Separating the two: AI says which way, historical data says how far.
+  const localSign = local.direction === "Aggravation" ? 1 : -1;
+  const citySign  = city.direction  === "Aggravation" ? 1 : -1;
+
   const δ_local_for = k => catDeltas
-    ? catDeltas[k]
-    : (local.direction === "Aggravation" ? 1 : -1);
+    ? localSign * catDeltas[k]
+    : localSign;
   const δ_city_for  = k => catDeltas
-    ? catDeltas[k]
-    : (city.direction  === "Aggravation" ? 1 : -1);
+    ? citySign * catDeltas[k]
+    : citySign;
 
   // Macro-impact weights per level (city falls back to local if not provided)
   const lMacro = local.macro_impact || {};
