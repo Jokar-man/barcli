@@ -16,19 +16,40 @@ export default function ABMPanel({ baselineProfile, policyProfile, onReset }) {
 
   // Animation loop
   useEffect(() => {
-    if (!playing) { cancelAnimationFrame(rafRef.current); return }
+    if (!playing) {
+      cancelAnimationFrame(rafRef.current)
+      rafRef.current = null
+      return
+    }
+
+    let localStep = null  // track step locally so closure is not stale
+
     const tick = () => {
       setStep(s => {
-        if (s >= maxSteps - 1) { setPlaying(false); return s }
-        rafRef.current = requestAnimationFrame(tick)
-        return s + 1
+        const next = s + 1
+        if (next >= maxSteps) {
+          setPlaying(false)
+          return s
+        }
+        localStep = next
+        return next
       })
+      if (localStep === null || localStep < maxSteps - 1) {
+        rafRef.current = requestAnimationFrame(tick)
+      }
     }
+
     rafRef.current = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(rafRef.current)
+
+    return () => {
+      cancelAnimationFrame(rafRef.current)
+      rafRef.current = null
+    }
   }, [playing, maxSteps])
 
   if (!baselineProfile?.length) return null
+
+  if (maxSteps < 2) return null
 
   return (
     <div className="abm-panel">
