@@ -26,7 +26,7 @@ export function buildRoadGraph(isochroneGeoJSON) {
   }
 
   function addEdge(idA, idB, dist) {
-    if (!edges.get(idA).some(e => e.to === idB)) {
+    if (!edges.get(idA).some(e => e.to === idB) && !edges.get(idB).some(e => e.to === idA)) {
       edges.get(idA).push({ to: idB, dist })
       edges.get(idB).push({ to: idA, dist })
     }
