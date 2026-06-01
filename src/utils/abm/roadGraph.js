@@ -26,8 +26,10 @@ export function buildRoadGraph(isochroneGeoJSON) {
   }
 
   function addEdge(idA, idB, dist) {
-    edges.get(idA).push({ to: idB, dist })
-    edges.get(idB).push({ to: idA, dist })
+    if (!edges.get(idA).some(e => e.to === idB)) {
+      edges.get(idA).push({ to: idB, dist })
+      edges.get(idB).push({ to: idA, dist })
+    }
   }
 
   const features = isochroneGeoJSON.features || []
@@ -38,9 +40,9 @@ export function buildRoadGraph(isochroneGeoJSON) {
 
     // Handle both LineString and MultiLineString
     const lines = geom.type === 'MultiLineString'
-      ? geom.coordinates.map(coords => turf.lineString(coords))
+      ? (geom.coordinates || []).filter(c => c && c.length >= 2).map(coords => turf.lineString(coords))
       : geom.type === 'LineString'
-        ? [feature]
+        ? (geom.coordinates && geom.coordinates.length >= 2 ? [feature] : [])
         : []
 
     lines.forEach(line => {
@@ -77,7 +79,8 @@ export function buildRoadGraph(isochroneGeoJSON) {
 
 /**
  * Snap an arbitrary [lng,lat] to the nearest node in the graph.
- * Returns the node id string.
+ * Linear scan — O(N) over nodes. Acceptable for single calls; not suitable for per-frame use.
+ * Returns the node id string, or null if the graph is empty.
  */
 export function snapToGraph(coord, nodes) {
   let bestId = null
