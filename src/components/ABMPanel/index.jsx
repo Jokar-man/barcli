@@ -2,10 +2,13 @@
 import { useState, useEffect, useRef } from 'react'
 import PathChart from './PathChart'
 
-export default function ABMPanel({ baselineProfile, policyProfile, onReset }) {
+export default function ABMPanel({ baselineProfile, policyProfile, baselinePath, policyPath, updateAgentPositions, onReset }) {
   const [playing, setPlaying] = useState(false)
   const [step, setStep]       = useState(0)
   const rafRef                = useRef(null)
+  // Keep a stable ref to updateAgentPositions so RAF tick doesn't re-register
+  const updateAgentsRef       = useRef(updateAgentPositions)
+  useEffect(() => { updateAgentsRef.current = updateAgentPositions }, [updateAgentPositions])
   const maxSteps = Math.max(baselineProfile?.length || 0, policyProfile?.length || 0)
 
   // Reset animation when new profiles arrive
@@ -34,6 +37,10 @@ export default function ABMPanel({ baselineProfile, policyProfile, onReset }) {
         localStep = next
         return next
       })
+      // Update map agent dots directly — no React state, no re-renders
+      if (localStep !== null) {
+        updateAgentsRef.current?.(localStep, baselinePath, policyPath, maxSteps)
+      }
       if (localStep === null || localStep < maxSteps - 1) {
         rafRef.current = requestAnimationFrame(tick)
       }
@@ -45,7 +52,7 @@ export default function ABMPanel({ baselineProfile, policyProfile, onReset }) {
       cancelAnimationFrame(rafRef.current)
       rafRef.current = null
     }
-  }, [playing, maxSteps])
+  }, [playing, maxSteps, baselinePath, policyPath])
 
   if (!baselineProfile?.length) return null
 
@@ -74,7 +81,11 @@ export default function ABMPanel({ baselineProfile, policyProfile, onReset }) {
           min={0}
           max={maxSteps - 1}
           value={step}
-          onChange={e => setStep(Number(e.target.value))}
+          onChange={e => {
+            const s = Number(e.target.value)
+            setStep(s)
+            updateAgentsRef.current?.(s, baselinePath, policyPath, maxSteps)
+          }}
           style={{ flex: 1 }}
         />
         <span style={{ fontSize: 10, color: '#888', minWidth: 40 }}>{step}/{maxSteps - 1}</span>

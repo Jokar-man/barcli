@@ -6,7 +6,7 @@ import {
 } from '../constants'
 import { computeStats, computeRaw, normalize } from '../utils/geo'
 
-export default function useMapbox({ activeFields, impactData, selectedCategory, abmMode, abmCallbacks }) {
+export default function useMapbox({ activeFields, impactData, selectedCategory, abmMode, abmCallbacks, onPointsLoaded, onImpactComputed }) {
   const mapContainerRef   = useRef(null)   // ref for the #map div
   const mapImpactRef      = useRef(null)   // ref for the #map-impact div
   const mapRef            = useRef(null)   // mapboxgl.Map instance (baseline)
@@ -17,6 +17,10 @@ export default function useMapbox({ activeFields, impactData, selectedCategory, 
   const activeFieldsRef   = useRef(activeFields)
   const abmCallbacksRef   = useRef(abmCallbacks)
   const [isCompareVisible, setIsCompareVisible] = useState(false)
+  const onPointsLoadedRef  = useRef(onPointsLoaded)
+  const onImpactComputedRef = useRef(onImpactComputed)
+  useEffect(() => { onPointsLoadedRef.current  = onPointsLoaded  }, [onPointsLoaded])
+  useEffect(() => { onImpactComputedRef.current = onImpactComputed }, [onImpactComputed])
 
   // Keep activeFieldsRef current so the map load callback can read latest value
   useEffect(() => { activeFieldsRef.current = activeFields }, [activeFields])
@@ -114,6 +118,7 @@ export default function useMapbox({ activeFields, impactData, selectedCategory, 
       }
       statsRef.current = computeStats(pts.features)
       pointsRef.current = pts
+      onPointsLoadedRef.current?.(pts, statsRef.current)
 
       map.addSource('points-main', { type: 'geojson', data: pts })
       addGlowLayers(map, 'points-main', 'main')
@@ -156,6 +161,18 @@ export default function useMapbox({ activeFields, impactData, selectedCategory, 
       impactMap.addLayer({
         id: 'abm-end-circle', type: 'circle', source: 'abm-end',
         paint: { 'circle-radius': 8, 'circle-color': '#C0C0C0', 'circle-stroke-width': 2, 'circle-stroke-color': '#fff' }
+      })
+
+      // Agent dots — move along paths during Play animation
+      impactMap.addSource('abm-agent-baseline', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
+      impactMap.addSource('abm-agent-policy',   { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
+      impactMap.addLayer({
+        id: 'abm-agent-baseline-dot', type: 'circle', source: 'abm-agent-baseline',
+        paint: { 'circle-radius': 10, 'circle-color': '#00eaff', 'circle-stroke-width': 2, 'circle-stroke-color': '#fff', 'circle-opacity': 0.95 }
+      })
+      impactMap.addLayer({
+        id: 'abm-agent-policy-dot', type: 'circle', source: 'abm-agent-policy',
+        paint: { 'circle-radius': 10, 'circle-color': '#ff9900', 'circle-stroke-width': 2, 'circle-stroke-color': '#fff', 'circle-opacity': 0.95 }
       })
 
       // Camera sync
@@ -259,7 +276,9 @@ export default function useMapbox({ activeFields, impactData, selectedCategory, 
       }
     })
 
-    mapInst.getSource('points-impact').setData({ type: 'FeatureCollection', features: impactFeatures })
+    const fc = { type: 'FeatureCollection', features: impactFeatures }
+    mapInst.getSource('points-impact').setData(fc)
+    onImpactComputedRef.current?.(fc)
   }, [impactData, selectedCategory, activeFields])
 
   // ── Compare divider controls ──────────────────────────────────────────────
@@ -328,6 +347,30 @@ export default function useMapbox({ activeFields, impactData, selectedCategory, 
     })
   }, [abmCallbacks])
 
+  // Move the agent dots along both paths — called directly from ABMPanel RAF tick
+  const updateAgentPositions = useCallback((step, basePath, polyPath, maxSteps) => {
+    const m = mapImpactInst.current
+    if (!m || !m.getSource('abm-agent-baseline')) return
+
+    const interp = (path, s, total) => {
+      if (!path?.length) return null
+      const idx = Math.min(Math.round(s * (path.length - 1) / Math.max(1, total - 1)), path.length - 1)
+      return path[idx]
+    }
+
+    const bCoord = interp(basePath, step, maxSteps)
+    const pCoord = interp(polyPath, step, maxSteps)
+
+    m.getSource('abm-agent-baseline').setData({
+      type: 'FeatureCollection',
+      features: bCoord ? [{ type: 'Feature', geometry: { type: 'Point', coordinates: bCoord }, properties: {} }] : []
+    })
+    m.getSource('abm-agent-policy').setData({
+      type: 'FeatureCollection',
+      features: pCoord ? [{ type: 'Feature', geometry: { type: 'Point', coordinates: pCoord }, properties: {} }] : []
+    })
+  }, [])
+
   // Hide baseline climate layers when ABM mode is active
   useEffect(() => {
     const m = mapRef.current
@@ -346,6 +389,7 @@ export default function useMapbox({ activeFields, impactData, selectedCategory, 
     showCompare,
     hideCompare,
     updateDivider,
-    dividerXRef
+    dividerXRef,
+    updateAgentPositions
   }
 }

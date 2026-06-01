@@ -1,0 +1,5 @@
+{
+  "buildCommand": "npm run build && cp -r data dist/data",
+  "outputDirectory": "dist",
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+}

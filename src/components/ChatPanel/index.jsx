@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { AI_API_URL } from '../../constants'
 import ABMPanel from '../ABMPanel'
 
-export default function ChatPanel({ onImpactData, abmResult, onResetABM }) {
+export default function ChatPanel({ onImpactData, abmResult, abmPaths, updateAgentPositions, onResetABM }) {
   const [messages, setMessages] = useState([{ type: 'welcome' }])
   const [policyText, setPolicyText] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('')
@@ -84,6 +84,9 @@ export default function ChatPanel({ onImpactData, abmResult, onResetABM }) {
           <ABMPanel
             baselineProfile={abmResult.baselineProfile}
             policyProfile={abmResult.policyProfile}
+            baselinePath={abmPaths?.baselinePath}
+            policyPath={abmPaths?.policyPath}
+            updateAgentPositions={updateAgentPositions}
             onReset={onResetABM}
           />
         )}

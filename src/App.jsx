@@ -12,9 +12,14 @@ export default function App() {
   const [impactData,       setImpactData]       = useState(null)
   const [selectedCategory, setSelectedCategory] = useState('')
   const [showModal,        setShowModal]        = useState(false)
-  const [abmActive,        setAbmActive]        = useState(false)
-  const [impactFeatures,   _setImpactFeatures]  = useState(null)
+  const [abmActive,     setAbmActive]     = useState(false)
+  // Populated by useMapbox callbacks — declared here so useABM can read them
+  const [loadedPoints,  setLoadedPoints]  = useState(null)
+  const [loadedStats,   setLoadedStats]   = useState({})
+  const [impactFC,      setImpactFC]      = useState(null)
 
+  // useABM is called first; it starts with null data and re-runs when
+  // useMapbox delivers real points/stats/impactFC via the setters above.
   const {
     abmState,
     startCoord,
@@ -26,11 +31,11 @@ export default function App() {
     handleMapClick,
     reset: resetABM
   } = useABM({
-    isActive:      abmActive,
-    points:        null,
-    stats:         null,
+    isActive:       abmActive,
+    points:         loadedPoints,
+    stats:          loadedStats,
     activeFields,
-    impactFeatures
+    impactFeatures: impactFC
   })
 
   const {
@@ -40,13 +45,16 @@ export default function App() {
     showCompare,
     hideCompare,
     updateDivider,
-    dividerXRef
+    dividerXRef,
+    updateAgentPositions
   } = useMapbox({
     activeFields,
     impactData,
     selectedCategory,
-    abmMode:      abmState,
-    abmCallbacks: { handleMapClick, startCoord, endCoord, baselinePath, policyPath }
+    abmMode:          abmState,
+    abmCallbacks:     { handleMapClick, startCoord, endCoord, baselinePath, policyPath },
+    onPointsLoaded:   (pts, stats) => { setLoadedPoints(pts); setLoadedStats(stats) },
+    onImpactComputed: setImpactFC
   })
 
   // Show/hide compare whenever impactData or activeFields changes
@@ -68,9 +76,6 @@ export default function App() {
   const handleImpactData = useCallback((aiResult, category) => {
     setImpactData(aiResult)
     setSelectedCategory(category)
-    // Store the last impact features so ABM can use post-policy vulnerability
-    // (useMapbox computes them internally — we capture from AI result metadata)
-    // For now impactFeatures is set separately via map hook exposure in a future task
   }, [])
 
   const handleDrag = useCallback((clientX) => {
@@ -95,6 +100,8 @@ export default function App() {
       <ChatPanel
         onImpactData={handleImpactData}
         abmResult={{ baselineProfile, policyProfile, abmState }}
+        abmPaths={{ baselinePath, policyPath }}
+        updateAgentPositions={updateAgentPositions}
         onResetABM={resetABM}
       />
     </>
