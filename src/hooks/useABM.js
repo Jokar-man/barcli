@@ -26,6 +26,7 @@ export default function useABM({ isActive, points, stats, activeFields, impactFe
   const indexBaseRef    = useRef([])     // baseline spatial index
   const indexPolicyRef  = useRef([])     // policy spatial index
   const activeFieldsRef = useRef(activeFields)
+  const computedRef     = useRef(false)  // prevent A* re-runs
 
   // Keep activeFieldsRef current
   useEffect(() => { activeFieldsRef.current = activeFields }, [activeFields])
@@ -61,6 +62,7 @@ export default function useABM({ isActive, points, stats, activeFields, impactFe
   // Activate / deactivate ABM mode
   useEffect(() => {
     if (!isActive) {
+      computedRef.current = false
       setAbmState('idle')
       setStartCoord(null)
       setEndCoord(null)
@@ -69,12 +71,14 @@ export default function useABM({ isActive, points, stats, activeFields, impactFe
       setBaselinePath(null)
       setPolicyPath(null)
     } else {
+      computedRef.current = false
       setAbmState('placing-start')
     }
   }, [isActive])
 
   // Handle map click — advances the state machine
   const handleMapClick = useCallback((lngLat) => {
+    if (!graphRef.current) return  // graph still loading — ignore click
     if (abmState === 'placing-start') {
       setStartCoord([lngLat.lng, lngLat.lat])
       setAbmState('placing-end')
@@ -87,6 +91,8 @@ export default function useABM({ isActive, points, stats, activeFields, impactFe
   // Run A* when state transitions to 'running'
   useEffect(() => {
     if (abmState !== 'running') return
+    if (computedRef.current) return  // already computed for this transition
+    computedRef.current = true
     if (!startCoord || !endCoord) return
     if (!graphRef.current) {
       console.warn('[ABM] Graph not ready')
@@ -136,6 +142,7 @@ export default function useABM({ isActive, points, stats, activeFields, impactFe
 
   // Reset to placing-start (called from UI)
   const reset = useCallback(() => {
+    computedRef.current = false
     setAbmState('placing-start')
     setStartCoord(null)
     setEndCoord(null)
