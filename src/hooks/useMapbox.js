@@ -6,7 +6,12 @@ import {
 } from '../constants'
 import { computeStats, computeRaw, normalize } from '../utils/geo'
 
-export default function useMapbox({ activeFields, impactData, selectedCategory, abmMode, abmCallbacks, onPointsLoaded, onImpactComputed }) {
+export default function useMapbox({
+  activeFields, impactData, selectedCategory,
+  abmMode, abmCallbacks,
+  onPointsLoaded, onImpactComputed,
+  multiAbmActive, shelterData, selectedShelterCoord, onShelterSelected
+}) {
   const mapContainerRef   = useRef(null)   // ref for the #map div
   const mapImpactRef      = useRef(null)   // ref for the #map-impact div
   const mapRef            = useRef(null)   // mapboxgl.Map instance (baseline)
@@ -25,6 +30,9 @@ export default function useMapbox({ activeFields, impactData, selectedCategory, 
   // Keep activeFieldsRef current so the map load callback can read latest value
   useEffect(() => { activeFieldsRef.current = activeFields }, [activeFields])
   useEffect(() => { abmCallbacksRef.current = abmCallbacks }, [abmCallbacks])
+
+  const onShelterSelectedRef = useRef(onShelterSelected)
+  useEffect(() => { onShelterSelectedRef.current = onShelterSelected }, [onShelterSelected])
 
   // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -123,6 +131,50 @@ export default function useMapbox({ activeFields, impactData, selectedCategory, 
       map.addSource('points-main', { type: 'geojson', data: pts })
       addGlowLayers(map, 'points-main', 'main')
 
+      // ── Shelter markers on BASELINE map ──────────────────────────────
+      map.addSource('shelters-main', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
+      map.addSource('selected-shelter-main', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
+      map.addLayer({
+        id: 'shelters-main-circle', type: 'circle', source: 'shelters-main',
+        layout: { visibility: 'none' },
+        paint: { 'circle-radius': 7, 'circle-color': '#00ff88', 'circle-stroke-width': 2, 'circle-stroke-color': '#fff', 'circle-opacity': 0.85 }
+      })
+      map.addLayer({
+        id: 'selected-shelter-main-circle', type: 'circle', source: 'selected-shelter-main',
+        layout: { visibility: 'none' },
+        paint: { 'circle-radius': 12, 'circle-color': '#00ff88', 'circle-stroke-width': 3, 'circle-stroke-color': '#fff', 'circle-opacity': 1 }
+      })
+      map.on('click', 'shelters-main-circle', e => {
+        if (!e.features.length) return
+        onShelterSelectedRef.current?.(e.features[0])
+      })
+      map.on('mouseenter', 'shelters-main-circle', () => { map.getCanvas().style.cursor = 'pointer' })
+      map.on('mouseleave', 'shelters-main-circle', () => { map.getCanvas().style.cursor = '' })
+      // Multi-agent dots on BASELINE map (before-simulation agents)
+      map.addSource('multi-agents-baseline', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
+      map.addLayer({
+        id: 'multi-agents-baseline-dot', type: 'circle', source: 'multi-agents-baseline',
+        paint: {
+          'circle-radius': 5,
+          'circle-color': ['case', ['get', 'arrived'], '#00ff88', '#00eaff'],
+          'circle-stroke-width': 1, 'circle-stroke-color': '#fff', 'circle-opacity': 0.9
+        }
+      })
+      // ── ABM layers on BASELINE map (left side) ───────────────────────
+      // Shows the before-agent path and moving dot against the original raster
+      map.addSource('abm-path-baseline-main', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
+      map.addSource('abm-agent-baseline-main', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
+      map.addSource('abm-start-main', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
+      map.addSource('abm-end-main',   { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
+      map.addLayer({ id: 'abm-path-baseline-main-line', type: 'line', source: 'abm-path-baseline-main',
+        paint: { 'line-color': '#00eaff', 'line-width': 3, 'line-opacity': 0.85 } })
+      map.addLayer({ id: 'abm-agent-baseline-main-dot', type: 'circle', source: 'abm-agent-baseline-main',
+        paint: { 'circle-radius': 10, 'circle-color': '#00eaff', 'circle-stroke-width': 2, 'circle-stroke-color': '#fff', 'circle-opacity': 0.95 } })
+      map.addLayer({ id: 'abm-start-main-circle', type: 'circle', source: 'abm-start-main',
+        paint: { 'circle-radius': 8, 'circle-color': '#FFD700', 'circle-stroke-width': 2, 'circle-stroke-color': '#fff' } })
+      map.addLayer({ id: 'abm-end-main-circle', type: 'circle', source: 'abm-end-main',
+        paint: { 'circle-radius': 8, 'circle-color': '#C0C0C0', 'circle-stroke-width': 2, 'circle-stroke-color': '#fff' } })
+
       // Initialise impact map
       const impactMap = new mapboxgl.Map({
         container: mapImpactRef.current,
@@ -140,6 +192,29 @@ export default function useMapbox({ activeFields, impactData, selectedCategory, 
       })
       addGlowLayers(impactMap, 'points-impact', 'impact')
 
+      // ── Shelter markers on IMPACT map ────────────────────────────────
+      impactMap.addSource('shelters-impact', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
+      impactMap.addSource('selected-shelter-impact', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
+      impactMap.addLayer({
+        id: 'shelters-impact-circle', type: 'circle', source: 'shelters-impact',
+        layout: { visibility: 'none' },
+        paint: { 'circle-radius': 7, 'circle-color': '#00ff88', 'circle-stroke-width': 2, 'circle-stroke-color': '#fff', 'circle-opacity': 0.85 }
+      })
+      impactMap.addLayer({
+        id: 'selected-shelter-impact-circle', type: 'circle', source: 'selected-shelter-impact',
+        layout: { visibility: 'none' },
+        paint: { 'circle-radius': 12, 'circle-color': '#00ff88', 'circle-stroke-width': 3, 'circle-stroke-color': '#fff', 'circle-opacity': 1 }
+      })
+      // Multi-agent dots on IMPACT map (after-policy agents)
+      impactMap.addSource('multi-agents-policy', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
+      impactMap.addLayer({
+        id: 'multi-agents-policy-dot', type: 'circle', source: 'multi-agents-policy',
+        paint: {
+          'circle-radius': 5,
+          'circle-color': ['case', ['get', 'arrived'], '#00ff88', '#ff9900'],
+          'circle-stroke-width': 1, 'circle-stroke-color': '#fff', 'circle-opacity': 0.9
+        }
+      })
       // ── ABM layers (all empty until ABM mode activates) ──────────────
       impactMap.addSource('abm-start',         { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
       impactMap.addSource('abm-end',           { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
@@ -314,73 +389,150 @@ export default function useMapbox({ activeFields, impactData, selectedCategory, 
     return x
   }, [])
 
-  // Sync ABM marker and path sources to map whenever abmCallbacks updates
+  // Sync ABM sources: baseline path/markers → left map, policy path/markers → right map
   useEffect(() => {
-    const m = mapImpactInst.current
-    if (!m || !m.getSource('abm-start')) return
+    const mBase   = mapRef.current           // baseline map (left)
+    const mImpact = mapImpactInst.current    // impact map (right)
+    if (!mImpact?.getSource('abm-start')) return
 
     const { startCoord, endCoord, baselinePath, policyPath } = abmCallbacks || {}
 
-    m.getSource('abm-start').setData({
-      type: 'FeatureCollection',
-      features: startCoord
-        ? [{ type: 'Feature', geometry: { type: 'Point', coordinates: startCoord }, properties: {} }]
-        : []
-    })
-    m.getSource('abm-end').setData({
-      type: 'FeatureCollection',
-      features: endCoord
-        ? [{ type: 'Feature', geometry: { type: 'Point', coordinates: endCoord }, properties: {} }]
-        : []
-    })
-    m.getSource('abm-path-baseline').setData({
-      type: 'FeatureCollection',
-      features: baselinePath?.length > 1
-        ? [{ type: 'Feature', geometry: { type: 'LineString', coordinates: baselinePath }, properties: {} }]
-        : []
-    })
-    m.getSource('abm-path-policy').setData({
-      type: 'FeatureCollection',
-      features: policyPath?.length > 1
-        ? [{ type: 'Feature', geometry: { type: 'LineString', coordinates: policyPath }, properties: {} }]
-        : []
-    })
+    const pt  = coord => coord
+      ? [{ type: 'Feature', geometry: { type: 'Point',      coordinates: coord }, properties: {} }]
+      : []
+    const ln  = coords => coords?.length > 1
+      ? [{ type: 'Feature', geometry: { type: 'LineString', coordinates: coords }, properties: {} }]
+      : []
+    const fc  = feats => ({ type: 'FeatureCollection', features: feats })
+
+    // Right map (impact): start/end markers + policy path
+    mImpact.getSource('abm-start').setData(fc(pt(startCoord)))
+    mImpact.getSource('abm-end').setData(fc(pt(endCoord)))
+    mImpact.getSource('abm-path-policy').setData(fc(ln(policyPath)))
+    // Clear baseline path on impact map — it lives on the left map now
+    mImpact.getSource('abm-path-baseline').setData(fc([]))
+
+    // Left map (baseline): start/end markers + baseline path
+    if (mBase?.getSource('abm-path-baseline-main')) {
+      mBase.getSource('abm-start-main').setData(fc(pt(startCoord)))
+      mBase.getSource('abm-end-main').setData(fc(pt(endCoord)))
+      mBase.getSource('abm-path-baseline-main').setData(fc(ln(baselinePath)))
+    }
   }, [abmCallbacks])
 
-  // Move the agent dots along both paths — called directly from ABMPanel RAF tick
+  // Move agent dots — baseline agent on LEFT map, policy agent on RIGHT map
+  // Called directly from ABMPanel RAF tick — no React state, zero re-renders
   const updateAgentPositions = useCallback((step, basePath, polyPath, maxSteps) => {
-    const m = mapImpactInst.current
-    if (!m || !m.getSource('abm-agent-baseline')) return
+    const mBase   = mapRef.current
+    const mImpact = mapImpactInst.current
+    if (!mImpact?.getSource('abm-agent-policy')) return
 
     const interp = (path, s, total) => {
       if (!path?.length) return null
       const idx = Math.min(Math.round(s * (path.length - 1) / Math.max(1, total - 1)), path.length - 1)
       return path[idx]
     }
+    const fc = coord => ({
+      type: 'FeatureCollection',
+      features: coord ? [{ type: 'Feature', geometry: { type: 'Point', coordinates: coord }, properties: {} }] : []
+    })
 
     const bCoord = interp(basePath, step, maxSteps)
     const pCoord = interp(polyPath, step, maxSteps)
 
-    m.getSource('abm-agent-baseline').setData({
-      type: 'FeatureCollection',
-      features: bCoord ? [{ type: 'Feature', geometry: { type: 'Point', coordinates: bCoord }, properties: {} }] : []
-    })
-    m.getSource('abm-agent-policy').setData({
-      type: 'FeatureCollection',
-      features: pCoord ? [{ type: 'Feature', geometry: { type: 'Point', coordinates: pCoord }, properties: {} }] : []
-    })
+    // Before-agent (cyan) on baseline map — reacts to original raster
+    if (mBase?.getSource('abm-agent-baseline-main')) {
+      mBase.getSource('abm-agent-baseline-main').setData(fc(bCoord))
+    }
+    // After-agent (orange) on impact map — reacts to post-policy raster
+    mImpact.getSource('abm-agent-policy').setData(fc(pCoord))
+    // Keep impact map baseline agent empty — that agent lives on the left now
+    if (mImpact.getSource('abm-agent-baseline')) {
+      mImpact.getSource('abm-agent-baseline').setData(fc(null))
+    }
   }, [])
 
-  // Hide baseline climate layers when ABM mode is active
+  // Clear all ABM sources on both maps when ABM resets to placing-start
+  // This eliminates the stale markers/paths from previous simulation runs
+  useEffect(() => {
+    if (abmMode !== 'placing-start') return
+    const mBase   = mapRef.current
+    const mImpact = mapImpactInst.current
+    const empty   = { type: 'FeatureCollection', features: [] }
+    const clear   = (map, ids) => ids.forEach(id => { if (map?.getSource(id)) map.getSource(id).setData(empty) })
+    clear(mBase,   ['abm-path-baseline-main', 'abm-agent-baseline-main', 'abm-start-main', 'abm-end-main'])
+    clear(mImpact, ['abm-path-baseline', 'abm-path-policy', 'abm-agent-baseline', 'abm-agent-policy', 'abm-start', 'abm-end'])
+  }, [abmMode])
+
+  // Climate dots stay visible in all modes — agents react to the visible raster.
+  // Ensure they are always shown (in case anything else hid them).
   useEffect(() => {
     const m = mapRef.current
     if (!m) return
-    const isAbm = abmMode !== 'idle' && abmMode !== undefined
-    const visibility = isAbm ? 'none' : 'visible'
     ;['glow-halo-main', 'glow-core-main'].forEach(id => {
-      if (m.getLayer(id)) m.setLayoutProperty(id, 'visibility', visibility)
+      if (m.getLayer(id)) m.setLayoutProperty(id, 'visibility', 'visible')
     })
   }, [abmMode])
+
+  // Show/hide shelter markers on both maps when multiAbmActive changes
+  useEffect(() => {
+    const mBase   = mapRef.current
+    const mImpact = mapImpactInst.current
+    if (!mBase?.getSource('shelters-main')) return
+    const vis = multiAbmActive ? 'visible' : 'none'
+    ;['shelters-main-circle', 'selected-shelter-main-circle'].forEach(id => {
+      if (mBase.getLayer(id)) mBase.setLayoutProperty(id, 'visibility', vis)
+    })
+    ;['shelters-impact-circle', 'selected-shelter-impact-circle'].forEach(id => {
+      if (mImpact?.getLayer(id)) mImpact.setLayoutProperty(id, 'visibility', vis)
+    })
+    if (!multiAbmActive) {
+      const empty = { type: 'FeatureCollection', features: [] }
+      if (mBase.getSource('multi-agents-baseline')) mBase.getSource('multi-agents-baseline').setData(empty)
+      if (mImpact?.getSource('multi-agents-policy')) mImpact.getSource('multi-agents-policy').setData(empty)
+    }
+  }, [multiAbmActive])
+
+  // Sync all shelter GeoJSON features to both maps
+  useEffect(() => {
+    const mBase   = mapRef.current
+    const mImpact = mapImpactInst.current
+    if (!shelterData?.length || !mBase?.getSource('shelters-main')) return
+    const fc = { type: 'FeatureCollection', features: shelterData }
+    mBase.getSource('shelters-main').setData(fc)
+    if (mImpact?.getSource('shelters-impact')) mImpact.getSource('shelters-impact').setData(fc)
+  }, [shelterData])
+
+  // Highlight selected shelter on both maps
+  useEffect(() => {
+    const mBase   = mapRef.current
+    const mImpact = mapImpactInst.current
+    if (!mBase?.getSource('selected-shelter-main')) return
+    const fc = selectedShelterCoord
+      ? { type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: selectedShelterCoord }, properties: {} }] }
+      : { type: 'FeatureCollection', features: [] }
+    mBase.getSource('selected-shelter-main').setData(fc)
+    if (mImpact?.getSource('selected-shelter-impact')) mImpact.getSource('selected-shelter-impact').setData(fc)
+  }, [selectedShelterCoord])
+
+  // Move multi-agent dots — called directly from MultiABMPanel RAF tick
+  const updateMultiAgentPositions = useCallback((frameIdx, baseSnaps, policySnaps) => {
+    const mBase   = mapRef.current
+    const mImpact = mapImpactInst.current
+    if (!mBase?.getSource('multi-agents-baseline')) return
+    const toFC = snapshot => ({
+      type: 'FeatureCollection',
+      features: (snapshot || []).map(a => ({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [a.lng, a.lat] },
+        properties: { arrived: a.arrived }
+      }))
+    })
+    const bFrame = baseSnaps?.[Math.min(frameIdx, (baseSnaps?.length || 1) - 1)]
+    const pFrame = policySnaps?.[Math.min(frameIdx, (policySnaps?.length || 1) - 1)]
+    mBase.getSource('multi-agents-baseline').setData(toFC(bFrame))
+    if (mImpact?.getSource('multi-agents-policy')) mImpact.getSource('multi-agents-policy').setData(toFC(pFrame))
+  }, [])
 
   return {
     mapContainerRef,
@@ -390,6 +542,7 @@ export default function useMapbox({ activeFields, impactData, selectedCategory, 
     hideCompare,
     updateDivider,
     dividerXRef,
-    updateAgentPositions
+    updateAgentPositions,
+    updateMultiAgentPositions
   }
 }
