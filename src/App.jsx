@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react'
 import useMapbox from './hooks/useMapbox'
 import useABM from './hooks/useABM'
+import useMultiABM from './hooks/useMultiABM'
 import LeftPanel from './components/LeftPanel'
 import ChatPanel from './components/ChatPanel'
 import CompareDivider from './components/CompareDivider'
@@ -12,7 +13,8 @@ export default function App() {
   const [impactData,       setImpactData]       = useState(null)
   const [selectedCategory, setSelectedCategory] = useState('')
   const [showModal,        setShowModal]        = useState(false)
-  const [abmActive,     setAbmActive]     = useState(false)
+  const [agenticMode,   setAgenticMode]   = useState('none') // 'none'|'single'|'multi'
+  const abmActive = agenticMode === 'single'
   // Populated by useMapbox callbacks — declared here so useABM can read them
   const [loadedPoints,  setLoadedPoints]  = useState(null)
   const [loadedStats,   setLoadedStats]   = useState({})
@@ -39,6 +41,25 @@ export default function App() {
   })
 
   const {
+    shelters,
+    selectedShelter,
+    multiSimState,
+    baselineCount,
+    policyCount,
+    totalAgents,
+    baselineSnapshots,
+    policySnapshots,
+    onShelterSelected,
+    reset: resetMultiABM
+  } = useMultiABM({
+    isActive:       agenticMode === 'multi',
+    points:         loadedPoints,
+    stats:          loadedStats,
+    activeFields,
+    impactFeatures: impactFC
+  })
+
+  const {
     mapContainerRef,
     mapImpactRef,
     isCompareVisible,
@@ -46,7 +67,8 @@ export default function App() {
     hideCompare,
     updateDivider,
     dividerXRef,
-    updateAgentPositions
+    updateAgentPositions,
+    updateMultiAgentPositions
   } = useMapbox({
     activeFields,
     impactData,
@@ -54,20 +76,25 @@ export default function App() {
     abmMode:          abmState,
     abmCallbacks:     { handleMapClick, startCoord, endCoord, baselinePath, policyPath },
     onPointsLoaded:   (pts, stats) => { setLoadedPoints(pts); setLoadedStats(stats) },
-    onImpactComputed: setImpactFC
+    onImpactComputed: setImpactFC,
+    multiAbmActive:       agenticMode === 'multi',
+    shelterData:          shelters,
+    selectedShelterCoord: selectedShelter?.geometry?.coordinates || null,
+    onShelterSelected,
   })
 
   // Show/hide compare whenever impactData or activeFields changes
   useEffect(() => {
     if (impactData && activeFields.length > 0) showCompare()
-    else if (!impactData) hideCompare()
+    else if (!impactData || activeFields.length === 0) hideCompare()
   }, [impactData, activeFields, showCompare, hideCompare])
 
+  // Show compare split when ABM finishes computing paths
+  useEffect(() => {
+    if (abmState === 'done' && activeFields.length > 0) showCompare()
+  }, [abmState, activeFields, showCompare])
+
   const handleToggleField = useCallback((field) => {
-    if (field === 'abm') {
-      setAbmActive(prev => !prev)
-      return
-    }
     setActiveFields(prev =>
       prev.includes(field) ? prev.filter(f => f !== field) : [...prev, field]
     )
@@ -77,6 +104,16 @@ export default function App() {
     setImpactData(aiResult)
     setSelectedCategory(category)
   }, [])
+
+  const handleReset = useCallback(() => {
+    setActiveFields([])
+    setImpactData(null)
+    setSelectedCategory('')
+    setAgenticMode('none')
+    resetABM()
+    resetMultiABM()
+    hideCompare()
+  }, [resetABM, resetMultiABM, hideCompare])
 
   const handleDrag = useCallback((clientX) => {
     return updateDivider(clientX)
@@ -92,8 +129,11 @@ export default function App() {
         dividerXRef={dividerXRef}
       />
       <LeftPanel
-        activeFields={abmActive ? [...activeFields, 'abm'] : activeFields}
+        activeFields={activeFields}
         onToggleField={handleToggleField}
+        agenticMode={agenticMode}
+        onSetAgenticMode={setAgenticMode}
+        onReset={handleReset}
       />
       <Legend onInfoClick={() => setShowModal(true)} />
       <InfoModal isOpen={showModal} onClose={() => setShowModal(false)} />
@@ -103,6 +143,11 @@ export default function App() {
         abmPaths={{ baselinePath, policyPath }}
         updateAgentPositions={updateAgentPositions}
         onResetABM={resetABM}
+        agenticMode={agenticMode}
+        multiAbmResult={{ multiSimState, baselineCount, policyCount, totalAgents, selectedShelter }}
+        multiSnapshots={{ baselineSnapshots, policySnapshots }}
+        updateMultiAgentPositions={updateMultiAgentPositions}
+        onResetMultiABM={resetMultiABM}
       />
     </>
   )
