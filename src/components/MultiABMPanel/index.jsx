@@ -55,8 +55,9 @@ export default function MultiABMPanel({
     }
 
     rafRef.current = requestAnimationFrame(tick)
-    return () => { cancelAnimationFrame(rafRef.current); rafRef.current = null }
-  }, [playing, maxFrames, baselineSnapshots, policySnapshots])
+    return () => { cancelAnimationFrame(rafRef.current); rafRef.current = null; frameRef.current = 0 }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playing, maxFrames])
 
   if (!selectedShelter) return null
 
