@@ -808,4 +808,95 @@ input[type=range] {
 }
 .agentic-btn:hover { border-color: rgba(0,234,255,0.3); color: #ccc; }
 .agentic-btn.active { border-color: #00eaff; color: #00eaff; background: rgba(0,234,255,0.08); }
+
+/* =====================
+   MULTI-AGENT SHELTER RESULT CARD
+   ===================== */
+
+.shelter-result-card {
+  background: rgba(5,5,5,0.9);
+  border: 1px solid rgba(0,255,136,0.2);
+  border-radius: 6px;
+  padding: 10px;
+  margin-top: 10px;
+}
+
+.shelter-result-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 10px;
+}
+
+.shelter-result-name {
+  font-size: 11px;
+  color: #00ff88;
+  font-weight: 600;
+}
+
+.shelter-result-district {
+  font-size: 9px;
+  color: #555;
+  margin-top: 2px;
+}
+
+.shelter-count-section { margin-bottom: 8px; }
+
+.shelter-count-label {
+  font-size: 9px;
+  color: #555;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+
+.shelter-count-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 5px;
+}
+
+.shelter-count-tag {
+  font-size: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  min-width: 36px;
+  text-align: right;
+}
+.shelter-count-tag.baseline { color: #00eaff; }
+.shelter-count-tag.policy   { color: #ff9900; }
+
+.shelter-count-track {
+  flex: 1;
+  height: 6px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.shelter-count-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.4s ease;
+}
+.shelter-count-fill.baseline-fill { background: linear-gradient(90deg, #005577, #00eaff); }
+.shelter-count-fill.policy-fill   { background: linear-gradient(90deg, #883300, #ff9900); }
+
+.shelter-count-num {
+  font-size: 10px;
+  color: #888;
+  min-width: 36px;
+  text-align: right;
+}
+
+.shelter-diff {
+  font-size: 10px;
+  padding: 5px 0 2px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+  margin-top: 4px;
+}
+.shelter-diff.positive { color: #00ff88; }
+.shelter-diff.negative { color: #00cc88; }
+.shelter-diff.neutral  { color: #555; }
 .agentic-btn.agentic-multi.active { border-color: #ff9900; color: #ff9900; background: rgba(255,153,0,0.08); }
