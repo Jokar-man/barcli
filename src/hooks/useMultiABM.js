@@ -5,9 +5,18 @@ import { buildSpatialIndex, sampleVulnerability } from '../utils/abm/vulnerabili
 
 const NUM_AGENTS       = 20
 const MAX_STEPS        = 200
-const SNAPSHOT_EVERY   = 5     // store agent positions every 5 sim steps → 40 animation frames
-const STRESS_THRESHOLD = 0.65  // vulnerability above this triggers shelter-seeking
-const SPAWN_RADIUS_M   = 600   // metres radius around shelter to spawn agents
+const SNAPSHOT_EVERY   = 5       // store agent positions every 5 sim steps → 40 animation frames
+const SPAWN_RADIUS_M   = 600     // max metres from shelter to spawn agents
+const SPAWN_MIN_M      = 150     // min metres — agents must start at least this far from shelter
+// Cumulative stress model:
+//   Each step the agent stands in a node with vuln > HEAT_TRIGGER, stress accumulates.
+//   Only when total accumulated stress ≥ STRESS_ACCUMULATION_THRESHOLD does the agent
+//   turn toward the shelter. Agents in cool areas may NEVER reach the threshold.
+const HEAT_TRIGGER     = 0.45    // vulnerability above this contributes to stress accumulation
+const STRESS_THRESHOLD = 4.0     // total accumulated stress that triggers shelter-seeking
+//   Example: node with vuln=0.8 → adds (0.8-0.45)×2 = 0.70 per step → triggers after ~6 steps
+//            node with vuln=0.5 → adds (0.5-0.45)×2 = 0.10 per step → triggers after ~40 steps
+//            node with vuln=0.4 → adds nothing → never triggers
 
 // Squared distance (metres) — no sqrt needed, used for comparison only
 function distSq([lng1, lat1], [lng2, lat2]) {
@@ -37,11 +46,12 @@ function runSimulation(startNodeIds, shelterNodeId, nodes, edges, spatialIndex) 
 
   // Mutable agent objects — no immutability needed inside simulation
   const agents = startNodeIds.map((nodeId, i) => ({
-    id:      i,
+    id:          i,
     nodeId,
-    seeking: getVuln(nodeId) >= STRESS_THRESHOLD,
-    arrived: nodeId === shelterNodeId,
-    visited: new Set([nodeId])
+    seeking:     false,     // true once accumulated stress ≥ STRESS_THRESHOLD
+    arrived:     nodeId === shelterNodeId,
+    visited:     new Set([nodeId]),
+    stressAccum: 0.0        // accumulated heat stress (cumulative, not instantaneous)
   }))
 
   const toCoord = id => { const [lng, lat] = nodes.get(id); return { lng, lat } }
@@ -53,7 +63,15 @@ function runSimulation(startNodeIds, shelterNodeId, nodes, edges, spatialIndex) 
       if (agent.arrived) continue
 
       const v = getVuln(agent.nodeId)
-      if (v >= STRESS_THRESHOLD) agent.seeking = true
+      // Accumulate heat stress: only nodes above HEAT_TRIGGER contribute
+      // The excess × 2 scales so vuln=0.8 adds ~0.7/step, vuln=0.5 adds ~0.1/step
+      if (v > HEAT_TRIGGER) {
+        agent.stressAccum += (v - HEAT_TRIGGER) * 2
+      }
+      // Trigger shelter-seeking once cumulative stress crosses the threshold
+      if (!agent.seeking && agent.stressAccum >= STRESS_THRESHOLD) {
+        agent.seeking = true
+      }
 
       const neighbours = (edges.get(agent.nodeId) || []).map(e => e.to)
       if (!neighbours.length) continue
@@ -179,13 +197,16 @@ export default function useMultiABM({ isActive, points, stats, activeFields, imp
       return
     }
 
-    // Find road nodes within SPAWN_RADIUS_M of the shelter
+    // Find road nodes within SPAWN_RADIUS_M but at least SPAWN_MIN_M from shelter
+    // Minimum distance ensures agents must actually walk through the city to reach shelter
     const [slng, slat] = shelterCoord
-    const RADIUS_SQ = SPAWN_RADIUS_M * SPAWN_RADIUS_M
+    const RADIUS_SQ  = SPAWN_RADIUS_M * SPAWN_RADIUS_M
+    const MIN_SQ     = SPAWN_MIN_M    * SPAWN_MIN_M
     const candidates = []
     for (const [id, coord] of nodes) {
       if (id === shelterNodeId) continue
-      if (distSq(coord, [slng, slat]) <= RADIUS_SQ) candidates.push(id)
+      const d = distSq(coord, [slng, slat])
+      if (d >= MIN_SQ && d <= RADIUS_SQ) candidates.push(id)
     }
 
     if (candidates.length < NUM_AGENTS) {

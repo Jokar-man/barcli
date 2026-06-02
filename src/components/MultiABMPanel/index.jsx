@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from 'react'
 
 const MAX_STEPS  = 200
-const FRAME_SKIP = 3  // ~20 animation frames/sec at 60fps
+const FRAME_SKIP = 8  // ~7-8 animation frames/sec at 60fps — slow enough to follow agents
 
 export default function MultiABMPanel({
   selectedShelter,

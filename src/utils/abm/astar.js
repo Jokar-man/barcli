@@ -68,17 +68,24 @@ export function astar(startId, goalId, nodes, edges, costFn) {
 }
 
 /**
- * Map vulnerability score [0,1] to movement cost multiplier.
- * Higher vulnerability = more expensive to traverse (agent avoids high-risk zones).
- * Mirrors thermal_cost() from the reference ABM_Interactive.ipynb notebook.
+ * Amplified vulnerability-to-cost mapping passed to each A* agent during
+ * planning. The 200:1 ratio between safe (0.5) and extreme (100) zones
+ * forces A* to route clearly around high-risk areas; after a policy reduces
+ * vulnerability, previously expensive nodes become affordable, producing a
+ * visibly different path.
  *
- * @param {number} score - vulnerability score [0, 1]
- * @returns {number} cost multiplier [0.5, 6.0]
+ * Thresholds mirror the user's Mesa ABM thermal_cost() but scaled for a
+ * 0–1 normalised vulnerability score instead of raw UTCI °C.
+ *
+ * @param {number} score - normalised vulnerability [0, 1]
+ * @returns {number} cost multiplier used by A* edge weighting
  */
-export function vulnerabilityCost(score) {
-  if (score > 0.8) return 6.0
-  if (score > 0.6) return 3.0
-  if (score > 0.4) return 1.5
-  if (score > 0.2) return 1.0
-  return 0.5  // low vulnerability = safe/easy to traverse
+export function ampCost(score) {
+  if (score >= 0.8) return  8.0   // expensive — agent detours when a short alternative exists
+  if (score >= 0.7) return  4.0   // noticeable cost — moderate detour
+  if (score >= 0.6) return  2.0   // mild cost — slight preference to avoid
+  if (score >= 0.4) return  1.2   // near-neutral
+  if (score >= 0.2) return  1.0
+  return 0.7                       // safe corridor — mildly preferred
 }
+

@@ -1,7 +1,7 @@
 // src/hooks/useABM.js
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { buildRoadGraph, snapToGraph } from '../utils/abm/roadGraph'
-import { astar, vulnerabilityCost } from '../utils/abm/astar'
+import { astar, ampCost } from '../utils/abm/astar'
 import { buildSpatialIndex, sampleVulnerability, profileAlongPath } from '../utils/abm/vulnerabilitySampler'
 
 /**
@@ -111,22 +111,30 @@ export default function useABM({ isActive, points, stats, activeFields, impactFe
     }
 
     const baseIndex   = indexBaseRef.current
+    // Policy index: uses post-policy V_new values when an AI analysis has been run,
+    // falls back to baseline only when no impact data exists yet.
     const policyIndex = indexPolicyRef.current.length ? indexPolicyRef.current : baseIndex
 
-    const baseCostFn = (id) => {
+    // Each agent gets its own sample function reading its raster state.
+    // Before-agent: reads raw baseline vulnerability (original data.geojson).
+    // After-agent:  reads post-policy V_new (impact formula output).
+    // ampCost() converts the sampled score to an A* edge weight with strong
+    // thresholds — nodes above 0.8 are 200× more expensive than safe nodes,
+    // so the agents genuinely reroute around high-risk zones.
+    const baseCostFn = id => {
       const [lng, lat] = nodes.get(id)
-      return vulnerabilityCost(sampleVulnerability(lng, lat, baseIndex))
+      return ampCost(sampleVulnerability(lng, lat, baseIndex))
     }
-    const policyCostFn = (id) => {
+    const policyCostFn = id => {
       const [lng, lat] = nodes.get(id)
-      return vulnerabilityCost(sampleVulnerability(lng, lat, policyIndex))
+      return ampCost(sampleVulnerability(lng, lat, policyIndex))
     }
 
-    const basePath   = astar(startId, goalId, nodes, edges, baseCostFn)
+    const basePath         = astar(startId, goalId, nodes, edges, baseCostFn)
     const policyPathResult = astar(startId, goalId, nodes, edges, policyCostFn)
 
     if (!basePath.length) {
-      console.warn('[ABM] No path found between the selected points')
+      console.warn('[ABM] A* found no path — try different start/end points')
       setAbmState('placing-start')
       return
     }
@@ -135,8 +143,12 @@ export default function useABM({ isActive, points, stats, activeFields, impactFe
 
     setBaselinePath(toCoords(basePath))
     setPolicyPath(toCoords(policyPathResult.length ? policyPathResult : basePath))
+    // profileAlongPath records the vulnerability experienced at each step — feeds the chart
     setBaseline(profileAlongPath(basePath, nodes, baseIndex))
-    setPolicy(profileAlongPath(policyPathResult.length ? policyPathResult : basePath, nodes, policyIndex))
+    setPolicy(profileAlongPath(
+      policyPathResult.length ? policyPathResult : basePath,
+      nodes, policyIndex
+    ))
     setAbmState('done')
   }, [abmState, startCoord, endCoord])
 

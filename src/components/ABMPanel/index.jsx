@@ -2,10 +2,15 @@
 import { useState, useEffect, useRef } from 'react'
 import PathChart from './PathChart'
 
+// Agent advances every FRAME_SKIP RAF frames ≈ 15 steps/second at 60 fps
+// Gives time to visually follow each routing decision on the map
+const FRAME_SKIP = 4
+
 export default function ABMPanel({ baselineProfile, policyProfile, baselinePath, policyPath, updateAgentPositions, onReset }) {
   const [playing, setPlaying] = useState(false)
   const [step, setStep]       = useState(0)
   const rafRef                = useRef(null)
+  const frameRef              = useRef(0)   // counts RAF frames for throttling
   // Keep a stable ref to updateAgentPositions so RAF tick doesn't re-register
   const updateAgentsRef       = useRef(updateAgentPositions)
   useEffect(() => { updateAgentsRef.current = updateAgentPositions }, [updateAgentPositions])
@@ -15,6 +20,7 @@ export default function ABMPanel({ baselineProfile, policyProfile, baselinePath,
   useEffect(() => {
     setStep(0)
     setPlaying(false)
+    frameRef.current = 0
   }, [baselineProfile])
 
   // Animation loop
@@ -28,19 +34,25 @@ export default function ABMPanel({ baselineProfile, policyProfile, baselinePath,
     let localStep = null  // track step locally so closure is not stale
 
     const tick = () => {
-      setStep(s => {
-        const next = s + 1
-        if (next >= maxSteps) {
-          setPlaying(false)
-          return s
+      frameRef.current += 1
+
+      // Only advance the step every FRAME_SKIP frames (~15 steps/sec at 60 fps)
+      if (frameRef.current % FRAME_SKIP === 0) {
+        setStep(s => {
+          const next = s + 1
+          if (next >= maxSteps) {
+            setPlaying(false)
+            return s
+          }
+          localStep = next
+          return next
+        })
+        // Update map agent dots directly — no React state, no re-renders
+        if (localStep !== null) {
+          updateAgentsRef.current?.(localStep, baselinePath, policyPath, maxSteps)
         }
-        localStep = next
-        return next
-      })
-      // Update map agent dots directly — no React state, no re-renders
-      if (localStep !== null) {
-        updateAgentsRef.current?.(localStep, baselinePath, policyPath, maxSteps)
       }
+
       if (localStep === null || localStep < maxSteps - 1) {
         rafRef.current = requestAnimationFrame(tick)
       }
