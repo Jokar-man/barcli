@@ -739,3 +739,73 @@ input[type=range] {
   padding: 6px 0 2px;
   text-align: center;
 }
+
+/* =====================
+   PANEL HEADER ROW & RESET
+   ===================== */
+
+.panel-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0;
+}
+
+.panel-header-row h3 {
+  margin: 0;
+}
+
+.panel-reset-btn {
+  background: none;
+  border: 1px solid rgba(0,234,255,0.18);
+  color: #555;
+  font-size: 13px;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s, border-color 0.2s;
+}
+.panel-reset-btn:hover { color: #ff4466; border-color: rgba(255,68,102,0.4); }
+
+/* =====================
+   AGENTIC INTERACTION SECTION
+   ===================== */
+
+.agentic-section {
+  margin-top: 14px;
+  border-top: 1px solid rgba(255,255,255,0.07);
+  padding-top: 12px;
+}
+
+.agentic-header {
+  font-size: 9px;
+  color: #555;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 8px;
+}
+
+.agentic-btn {
+  display: block;
+  width: 100%;
+  padding: 10px 12px;
+  margin-bottom: 6px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 4px;
+  color: #888;
+  font-family: inherit;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s;
+}
+.agentic-btn:hover { border-color: rgba(0,234,255,0.3); color: #ccc; }
+.agentic-btn.active { border-color: #00eaff; color: #00eaff; background: rgba(0,234,255,0.08); }
+.agentic-btn.agentic-multi.active { border-color: #ff9900; color: #ff9900; background: rgba(255,153,0,0.08); }
