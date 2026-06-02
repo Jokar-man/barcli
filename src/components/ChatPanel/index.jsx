@@ -1,8 +1,14 @@
 import { useState, useRef, useEffect } from 'react'
 import { AI_API_URL } from '../../constants'
 import ABMPanel from '../ABMPanel'
+import MultiABMPanel from '../MultiABMPanel'
 
-export default function ChatPanel({ onImpactData, abmResult, abmPaths, updateAgentPositions, onResetABM }) {
+export default function ChatPanel({
+  onImpactData,
+  abmResult, abmPaths, updateAgentPositions, onResetABM,
+  agenticMode,
+  multiAbmResult, multiSnapshots, updateMultiAgentPositions, onResetMultiABM
+}) {
   const [messages, setMessages] = useState([{ type: 'welcome' }])
   const [policyText, setPolicyText] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('')
@@ -88,6 +94,25 @@ export default function ChatPanel({ onImpactData, abmResult, abmPaths, updateAge
             policyPath={abmPaths?.policyPath}
             updateAgentPositions={updateAgentPositions}
             onReset={onResetABM}
+          />
+        )}
+        {/* Multi-Agent ABM status messages */}
+        {agenticMode === 'multi' && multiAbmResult?.multiSimState === 'selecting' && (
+          <div className="abm-status">🟢 Click a shelter marker on the map to start the simulation</div>
+        )}
+        {agenticMode === 'multi' && multiAbmResult?.multiSimState === 'running' && (
+          <div className="abm-status">⏳ Running generative simulation ({multiAbmResult.totalAgents} agents)...</div>
+        )}
+        {agenticMode === 'multi' && multiAbmResult?.multiSimState === 'done' && (
+          <MultiABMPanel
+            selectedShelter={multiAbmResult.selectedShelter}
+            baselineCount={multiAbmResult.baselineCount}
+            policyCount={multiAbmResult.policyCount}
+            totalAgents={multiAbmResult.totalAgents}
+            baselineSnapshots={multiSnapshots?.baselineSnapshots}
+            policySnapshots={multiSnapshots?.policySnapshots}
+            updateMultiAgentPositions={updateMultiAgentPositions}
+            onReset={onResetMultiABM}
           />
         )}
         <div ref={messagesEndRef} />
