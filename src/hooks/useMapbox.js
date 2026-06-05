@@ -89,6 +89,12 @@ export default function useMapbox({
 
   useEffect(() => {
     mapboxgl.accessToken = MAPBOX_TOKEN
+
+    if (!mapboxgl.supported()) {
+      console.error('WebGL is not supported in this browser/environment. Map cannot be initialized.')
+      return
+    }
+
     const MAP_OPTIONS = {
       style: 'mapbox://styles/mapbox/dark-v11',
       center: CENTER,
@@ -101,7 +107,13 @@ export default function useMapbox({
       maxZoom: 18
     }
 
-    const map = new mapboxgl.Map({ container: mapContainerRef.current, ...MAP_OPTIONS })
+    let map
+    try {
+      map = new mapboxgl.Map({ container: mapContainerRef.current, ...MAP_OPTIONS })
+    } catch (err) {
+      console.error('Failed to initialize Mapbox map:', err)
+      return
+    }
     map.dragRotate.disable()
     map.touchZoomRotate.disableRotation()
     mapRef.current = map
@@ -271,7 +283,7 @@ export default function useMapbox({
       updateVisualizationInner(activeFieldsRef.current)
     })
 
-    return () => { map.remove() }
+    return () => { map?.remove() }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []) // intentionally runs once — map init must not re-run on state changes
 
