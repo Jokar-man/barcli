@@ -755,6 +755,12 @@ input[type=range] {
   margin: 0;
 }
 
+.panel-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
 .panel-reset-btn {
   background: none;
   border: 1px solid rgba(0,234,255,0.18);
@@ -770,6 +776,31 @@ input[type=range] {
   transition: color 0.2s, border-color 0.2s;
 }
 .panel-reset-btn:hover { color: #ff4466; border-color: rgba(255,68,102,0.4); }
+
+.panel-3d-btn {
+  background: none;
+  border: 1px solid rgba(0,234,255,0.25);
+  color: #00eaff;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  padding: 0 6px;
+  height: 24px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  opacity: 0.55;
+}
+.panel-3d-btn:hover { opacity: 1; background: rgba(0,234,255,0.08); }
+.panel-3d-btn.active {
+  opacity: 1;
+  background: rgba(0,234,255,0.15);
+  border-color: #00eaff;
+  box-shadow: 0 0 8px rgba(0,234,255,0.3);
+}
 
 /* =====================
    AGENTIC INTERACTION SECTION

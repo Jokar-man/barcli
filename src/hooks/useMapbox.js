@@ -6,28 +6,60 @@ import {
 } from '../constants'
 import { computeStats, computeRaw, normalize } from '../utils/geo'
 
+// Build an 8-sided cylinder polygon centred on [lng, lat] with ~12m radius.
+// Geometry is computed ONCE and cached — only _value is mutated on updates.
+function makeCylinderPolygon(lng, lat) {
+  const SIDES = 8
+  const radiusM = 12
+  const radiusLat = radiusM / 111320
+  const radiusLon = radiusM / (111320 * Math.cos(lat * Math.PI / 180))
+  const ring = []
+  for (let i = 0; i <= SIDES; i++) {
+    const angle = (2 * Math.PI * i) / SIDES
+    ring.push([lng + radiusLon * Math.cos(angle), lat + radiusLat * Math.sin(angle)])
+  }
+  return { type: 'Polygon', coordinates: [ring] }
+}
+
+// Build the extrusion FeatureCollection from a point FeatureCollection.
+// Call ONCE per dataset load — expensive geometry is not recreated on value updates.
+function buildExtrusionFC(pts) {
+  return {
+    type: 'FeatureCollection',
+    features: pts.features.map(f => ({
+      type: 'Feature',
+      geometry: makeCylinderPolygon(...f.geometry.coordinates),
+      properties: { _value: f.properties._value || 0 }
+    }))
+  }
+}
+
 export default function useMapbox({
   activeFields, impactData, selectedCategory,
   abmMode, abmCallbacks,
   onPointsLoaded, onImpactComputed,
   multiAbmActive, shelterData, selectedShelterCoord, onShelterSelected
 }) {
-  const mapContainerRef   = useRef(null)   // ref for the #map div
-  const mapImpactRef      = useRef(null)   // ref for the #map-impact div
-  const mapRef            = useRef(null)   // mapboxgl.Map instance (baseline)
-  const mapImpactInst     = useRef(null)   // mapboxgl.Map instance (impact)
-  const pointsRef         = useRef(null)   // GeoJSON feature collection
-  const statsRef          = useRef({})     // computed stats
-  const dividerXRef       = useRef(0)
-  const activeFieldsRef   = useRef(activeFields)
-  const abmCallbacksRef   = useRef(abmCallbacks)
+  const mapContainerRef    = useRef(null)
+  const mapImpactRef       = useRef(null)
+  const mapRef             = useRef(null)
+  const mapImpactInst      = useRef(null)
+  const pointsRef          = useRef(null)
+  const statsRef           = useRef({})
+  const dividerXRef        = useRef(0)
+  const activeFieldsRef    = useRef(activeFields)
+  const abmCallbacksRef    = useRef(abmCallbacks)
+  const is3DRef            = useRef(false)
+  // Cached extrusion GeoJSON — geometry built once, only _value mutated on updates
+  const extrusionRef       = useRef(null)
+  const extrusionImpactRef = useRef(null)
   const [isCompareVisible, setIsCompareVisible] = useState(false)
+  const [is3D,             setIs3D]             = useState(false)
   const onPointsLoadedRef  = useRef(onPointsLoaded)
   const onImpactComputedRef = useRef(onImpactComputed)
   useEffect(() => { onPointsLoadedRef.current  = onPointsLoaded  }, [onPointsLoaded])
   useEffect(() => { onImpactComputedRef.current = onImpactComputed }, [onImpactComputed])
 
-  // Keep activeFieldsRef current so the map load callback can read latest value
   useEffect(() => { activeFieldsRef.current = activeFields }, [activeFields])
   useEffect(() => { abmCallbacksRef.current = abmCallbacks }, [abmCallbacks])
 
@@ -85,6 +117,25 @@ export default function useMapbox({
     })
   }
 
+  function addExtrusionLayer(m, sourceId, layerId) {
+    m.addLayer({
+      id: layerId,
+      type: 'fill-extrusion',
+      source: sourceId,
+      layout: { visibility: 'none' },
+      paint: {
+        'fill-extrusion-color': CORE_COLOR,
+        'fill-extrusion-height': [
+          'interpolate', ['linear'], ['get', '_value'],
+          0, 0,
+          1, 1000
+        ],
+        'fill-extrusion-base': 0,
+        'fill-extrusion-opacity': 0.88
+      }
+    })
+  }
+
   // ── Map initialisation (runs once) ────────────────────────────────────────
 
   useEffect(() => {
@@ -101,7 +152,6 @@ export default function useMapbox({
       zoom: 13.5,
       pitch: 0,
       bearing: 0,
-      maxPitch: 0,
       antialias: true,
       minZoom: 10,
       maxZoom: 18
@@ -143,6 +193,12 @@ export default function useMapbox({
       map.addSource('points-main', { type: 'geojson', data: pts })
       addGlowLayers(map, 'points-main', 'main')
 
+      // Extrusion source + layer for 3D mode (hidden by default).
+      // Geometry is built once and cached — updates only mutate _value in-place.
+      extrusionRef.current = buildExtrusionFC(pts)
+      map.addSource('extrusion-main', { type: 'geojson', data: extrusionRef.current })
+      addExtrusionLayer(map, 'extrusion-main', 'extrusion-main-layer')
+
       // ── Shelter markers on BASELINE map ──────────────────────────────
       map.addSource('shelters-main', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
       map.addSource('selected-shelter-main', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
@@ -173,7 +229,6 @@ export default function useMapbox({
         }
       })
       // ── ABM layers on BASELINE map (left side) ───────────────────────
-      // Shows the before-agent path and moving dot against the original raster
       map.addSource('abm-path-baseline-main', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
       map.addSource('abm-agent-baseline-main', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
       map.addSource('abm-start-main', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
@@ -203,6 +258,11 @@ export default function useMapbox({
         data: { type: 'FeatureCollection', features: [] }
       })
       addGlowLayers(impactMap, 'points-impact', 'impact')
+
+      // Impact extrusion shares geometry with main (same points), values updated separately
+      extrusionImpactRef.current = buildExtrusionFC(pts)
+      impactMap.addSource('extrusion-impact', { type: 'geojson', data: extrusionImpactRef.current })
+      addExtrusionLayer(impactMap, 'extrusion-impact', 'extrusion-impact-layer')
 
       // ── Shelter markers on IMPACT map ────────────────────────────────
       impactMap.addSource('shelters-impact', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
@@ -262,7 +322,7 @@ export default function useMapbox({
         paint: { 'circle-radius': 10, 'circle-color': '#ff9900', 'circle-stroke-width': 2, 'circle-stroke-color': '#fff', 'circle-opacity': 0.95 }
       })
 
-      // Camera sync
+      // Camera sync — pitch/bearing carry through so 3D works on both maps
       map.on('move', () => {
         impactMap.jumpTo({
           center: map.getCenter(),
@@ -284,8 +344,8 @@ export default function useMapbox({
     })
 
     return () => { map?.remove() }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []) // intentionally runs once — map init must not re-run on state changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // ── updateVisualization — called when activeFields changes ────────────────
 
@@ -302,6 +362,13 @@ export default function useMapbox({
       p._value = sum / fields.length
     })
     map.getSource('points-main').setData(pts)
+    // Mutate cached extrusion features in-place — no new geometry allocation
+    if (extrusionRef.current && map.getSource('extrusion-main')) {
+      pts.features.forEach((f, i) => {
+        extrusionRef.current.features[i].properties._value = f.properties._value || 0
+      })
+      map.getSource('extrusion-main').setData(extrusionRef.current)
+    }
   }, [])
 
   useEffect(() => {
@@ -366,7 +433,62 @@ export default function useMapbox({
     const fc = { type: 'FeatureCollection', features: impactFeatures }
     mapInst.getSource('points-impact').setData(fc)
     onImpactComputedRef.current?.(fc)
+
+    // Mutate cached impact extrusion features in-place — no new geometry allocation
+    if (extrusionImpactRef.current && mapInst.getSource('extrusion-impact')) {
+      impactFeatures.forEach((f, i) => {
+        extrusionImpactRef.current.features[i].properties._value = f.properties._value || 0
+      })
+      mapInst.getSource('extrusion-impact').setData(extrusionImpactRef.current)
+    }
   }, [impactData, selectedCategory, activeFields])
+
+  // ── 3D toggle ─────────────────────────────────────────────────────────────
+
+  const toggle3D = useCallback((enable) => {
+    const mBase   = mapRef.current
+    const mImpact = mapImpactInst.current
+    if (!mBase) return
+
+    is3DRef.current = enable
+    setIs3D(enable)
+
+    // Animate camera to 3D perspective or back to flat
+    const targetPitch = enable ? 52 : 0
+    mBase.easeTo({ pitch: targetPitch, bearing: 0, duration: 800 })
+    if (mImpact) mImpact.easeTo({ pitch: targetPitch, bearing: 0, duration: 800 })
+
+    // Enable/disable rotation so the user can orbit in 3D
+    if (enable) {
+      mBase.dragRotate.enable()
+      mBase.touchZoomRotate.enableRotation()
+    } else {
+      mBase.dragRotate.disable()
+      mBase.touchZoomRotate.disableRotation()
+    }
+
+    const circleVis   = enable ? 'none'    : 'visible'
+    const extrusionVis = enable ? 'visible' : 'none'
+
+    const mainCircleIds   = ['glow-halo-main', 'glow-core-main']
+    const impactCircleIds = ['glow-halo-impact', 'glow-core-impact']
+
+    mainCircleIds.forEach(id => {
+      if (mBase.getLayer(id)) mBase.setLayoutProperty(id, 'visibility', circleVis)
+    })
+    if (mBase.getLayer('extrusion-main-layer')) {
+      mBase.setLayoutProperty('extrusion-main-layer', 'visibility', extrusionVis)
+    }
+
+    if (mImpact) {
+      impactCircleIds.forEach(id => {
+        if (mImpact.getLayer(id)) mImpact.setLayoutProperty(id, 'visibility', circleVis)
+      })
+      if (mImpact.getLayer('extrusion-impact-layer')) {
+        mImpact.setLayoutProperty('extrusion-impact-layer', 'visibility', extrusionVis)
+      }
+    }
+  }, [])
 
   // ── Compare divider controls ──────────────────────────────────────────────
 
@@ -401,10 +523,10 @@ export default function useMapbox({
     return x
   }, [])
 
-  // Sync ABM sources: baseline path/markers → left map, policy path/markers → right map
+  // Sync ABM sources
   useEffect(() => {
-    const mBase   = mapRef.current           // baseline map (left)
-    const mImpact = mapImpactInst.current    // impact map (right)
+    const mBase   = mapRef.current
+    const mImpact = mapImpactInst.current
     if (!mImpact?.getSource('abm-start')) return
 
     const { startCoord, endCoord, baselinePath, policyPath } = abmCallbacks || {}
@@ -417,14 +539,11 @@ export default function useMapbox({
       : []
     const fc  = feats => ({ type: 'FeatureCollection', features: feats })
 
-    // Right map (impact): start/end markers + policy path
     mImpact.getSource('abm-start').setData(fc(pt(startCoord)))
     mImpact.getSource('abm-end').setData(fc(pt(endCoord)))
     mImpact.getSource('abm-path-policy').setData(fc(ln(policyPath)))
-    // Clear baseline path on impact map — it lives on the left map now
     mImpact.getSource('abm-path-baseline').setData(fc([]))
 
-    // Left map (baseline): start/end markers + baseline path
     if (mBase?.getSource('abm-path-baseline-main')) {
       mBase.getSource('abm-start-main').setData(fc(pt(startCoord)))
       mBase.getSource('abm-end-main').setData(fc(pt(endCoord)))
@@ -432,8 +551,7 @@ export default function useMapbox({
     }
   }, [abmCallbacks])
 
-  // Move agent dots — baseline agent on LEFT map, policy agent on RIGHT map
-  // Called directly from ABMPanel RAF tick — no React state, zero re-renders
+  // Move agent dots
   const updateAgentPositions = useCallback((step, basePath, polyPath, maxSteps) => {
     const mBase   = mapRef.current
     const mImpact = mapImpactInst.current
@@ -452,20 +570,16 @@ export default function useMapbox({
     const bCoord = interp(basePath, step, maxSteps)
     const pCoord = interp(polyPath, step, maxSteps)
 
-    // Before-agent (cyan) on baseline map — reacts to original raster
     if (mBase?.getSource('abm-agent-baseline-main')) {
       mBase.getSource('abm-agent-baseline-main').setData(fc(bCoord))
     }
-    // After-agent (orange) on impact map — reacts to post-policy raster
     mImpact.getSource('abm-agent-policy').setData(fc(pCoord))
-    // Keep impact map baseline agent empty — that agent lives on the left now
     if (mImpact.getSource('abm-agent-baseline')) {
       mImpact.getSource('abm-agent-baseline').setData(fc(null))
     }
   }, [])
 
-  // Clear all ABM sources on both maps when ABM resets to placing-start
-  // This eliminates the stale markers/paths from previous simulation runs
+  // Clear all ABM sources on reset
   useEffect(() => {
     if (abmMode !== 'placing-start') return
     const mBase   = mapRef.current
@@ -476,17 +590,16 @@ export default function useMapbox({
     clear(mImpact, ['abm-path-baseline', 'abm-path-policy', 'abm-agent-baseline', 'abm-agent-policy', 'abm-start', 'abm-end'])
   }, [abmMode])
 
-  // Climate dots stay visible in all modes — agents react to the visible raster.
-  // Ensure they are always shown (in case anything else hid them).
+  // Climate dots visibility in all modes
   useEffect(() => {
     const m = mapRef.current
     if (!m) return
     ;['glow-halo-main', 'glow-core-main'].forEach(id => {
-      if (m.getLayer(id)) m.setLayoutProperty(id, 'visibility', 'visible')
+      if (m.getLayer(id)) m.setLayoutProperty(id, 'visibility', is3DRef.current ? 'none' : 'visible')
     })
   }, [abmMode])
 
-  // Show/hide shelter markers on both maps when multiAbmActive changes
+  // Show/hide shelter markers when multiAbmActive changes
   useEffect(() => {
     const mBase   = mapRef.current
     const mImpact = mapImpactInst.current
@@ -505,7 +618,7 @@ export default function useMapbox({
     }
   }, [multiAbmActive])
 
-  // Sync all shelter GeoJSON features to both maps
+  // Sync shelter GeoJSON to both maps
   useEffect(() => {
     const mBase   = mapRef.current
     const mImpact = mapImpactInst.current
@@ -555,6 +668,8 @@ export default function useMapbox({
     updateDivider,
     dividerXRef,
     updateAgentPositions,
-    updateMultiAgentPositions
+    updateMultiAgentPositions,
+    is3D,
+    toggle3D
   }
 }

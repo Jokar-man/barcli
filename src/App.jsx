@@ -68,7 +68,9 @@ export default function App() {
     updateDivider,
     dividerXRef,
     updateAgentPositions,
-    updateMultiAgentPositions
+    updateMultiAgentPositions,
+    is3D,
+    toggle3D
   } = useMapbox({
     activeFields,
     impactData,
@@ -134,6 +136,8 @@ export default function App() {
         agenticMode={agenticMode}
         onSetAgenticMode={setAgenticMode}
         onReset={handleReset}
+        is3D={is3D}
+        onToggle3D={toggle3D}
       />
       <Legend onInfoClick={() => setShowModal(true)} />
       <InfoModal isOpen={showModal} onClose={() => setShowModal(false)} />
