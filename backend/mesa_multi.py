@@ -36,18 +36,32 @@ AGENT_ROSTER = [
 ]  # exactly 20 entries
 
 
-# ── Spatial helpers ───────────────────────────────────────────────────────────
+# ── Spatial grid for O(1) nearest-neighbour lookup ───────────────────────────
 
-def sample_vuln(lng: float, lat: float, vuln_index: list) -> float:
-    best_d2, best_score = math.inf, 0.0
+_CELL_DEG = 0.003
+
+def _build_grid(vuln_index: list) -> dict:
+    grid = {}
+    for p in vuln_index:
+        cx = int(p["lng"] / _CELL_DEG)
+        cy = int(p["lat"] / _CELL_DEG)
+        grid.setdefault((cx, cy), []).append(p)
+    return grid
+
+def _sample_grid(lng: float, lat: float, grid: dict) -> float:
+    cx = int(lng / _CELL_DEG)
+    cy = int(lat / _CELL_DEG)
     cos_lat = math.cos(math.radians(lat))
-    for item in vuln_index:
-        dx = (item["lng"] - lng) * 111320 * cos_lat
-        dy = (item["lat"] - lat) * 110540
-        d2 = dx * dx + dy * dy
-        if d2 < best_d2:
-            best_d2 = d2
-            best_score = item["score"]
+    best_d2, best_score = math.inf, 0.0
+    for dx in range(-2, 3):
+        for dy in range(-2, 3):
+            for p in grid.get((cx + dx, cy + dy), []):
+                ddx = (p["lng"] - lng) * 111320 * cos_lat
+                ddy = (p["lat"] - lat) * 110540
+                d2  = ddx * ddx + ddy * ddy
+                if d2 < best_d2:
+                    best_d2 = d2
+                    best_score = p["score"]
     return best_score
 
 
@@ -129,6 +143,7 @@ class MultiAgentModel(mesa.Model):
         self.shelter_node = shelter_node
         self.vuln_index   = vuln_index
         self._vuln_cache: dict = {}
+        self._vuln_grid = _build_grid(vuln_index)   # O(M) once; lookups are O(1)
 
         # Create all 20 agents (mesa.Model tracks them in self.agents automatically)
         self._agent_list = []
@@ -142,7 +157,7 @@ class MultiAgentModel(mesa.Model):
     def get_vuln(self, node_id: str) -> float:
         if node_id not in self._vuln_cache:
             lng, lat = self.nodes[node_id]
-            self._vuln_cache[node_id] = sample_vuln(lng, lat, self.vuln_index)
+            self._vuln_cache[node_id] = _sample_grid(lng, lat, self._vuln_grid)
         return self._vuln_cache[node_id]
 
     def _snapshot(self) -> list:

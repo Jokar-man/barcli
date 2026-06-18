@@ -10,7 +10,6 @@ import mesa
 
 
 def amp_cost(score: float) -> float:
-    """Mirrors JS ampCost — max 2.5× so paths stay sensible."""
     if score >= 0.8: return 2.5
     if score >= 0.7: return 2.0
     if score >= 0.6: return 1.5
@@ -19,23 +18,40 @@ def amp_cost(score: float) -> float:
     return 0.85
 
 
-def sample_vuln(lng: float, lat: float, vuln_index: list) -> float:
-    """Nearest-neighbour lookup — called once per unique node, result cached by model."""
-    best_d2, best_score = math.inf, 0.0
+# ── Spatial grid for O(1) nearest-neighbour vulnerability lookup ──────────────
+# Without this, sample_vuln is O(N) per node — for a long A* path exploring
+# thousands of nodes × thousands of vuln points = millions of Python ops → timeout.
+
+_CELL_DEG = 0.003   # ~330m per cell; 3×3 search radius covers ~1km
+
+def _build_grid(vuln_index: list) -> dict:
+    grid = {}
+    for p in vuln_index:
+        cx = int(p["lng"] / _CELL_DEG)
+        cy = int(p["lat"] / _CELL_DEG)
+        grid.setdefault((cx, cy), []).append(p)
+    return grid
+
+def _sample_grid(lng: float, lat: float, grid: dict) -> float:
+    cx = int(lng / _CELL_DEG)
+    cy = int(lat / _CELL_DEG)
     cos_lat = math.cos(math.radians(lat))
-    for item in vuln_index:
-        dx = (item["lng"] - lng) * 111320 * cos_lat
-        dy = (item["lat"] - lat) * 110540
-        d2 = dx * dx + dy * dy
-        if d2 < best_d2:
-            best_d2 = d2
-            best_score = item["score"]
+    best_d2, best_score = math.inf, 0.0
+    for dx in range(-2, 3):
+        for dy in range(-2, 3):
+            for p in grid.get((cx + dx, cy + dy), []):
+                ddx = (p["lng"] - lng) * 111320 * cos_lat
+                ddy = (p["lat"] - lat) * 110540
+                d2  = ddx * ddx + ddy * ddy
+                if d2 < best_d2:
+                    best_d2 = d2
+                    best_score = p["score"]
     return best_score
 
 
-class PathfinderAgent(mesa.Agent):
-    """Moves one step along the pre-computed path per model.step()."""
+# ── Mesa agent ────────────────────────────────────────────────────────────────
 
+class PathfinderAgent(mesa.Agent):
     def __init__(self, model):
         super().__init__(model)
         self.current_node: str = model.start_id
@@ -51,12 +67,11 @@ class PathfinderAgent(mesa.Agent):
             self.arrived = True
 
 
+# ── Mesa model ────────────────────────────────────────────────────────────────
+
 class SingleAgentModel(mesa.Model):
     """
     Computes a climate-weighted A* path at construction time.
-    The route handler reads path_coords / vuln_profile directly —
-    no step() calls are needed for the API use case.
-
     climate_weight=0 → pure shortest path
     climate_weight=1 → maximum climate avoidance
     """
@@ -75,9 +90,9 @@ class SingleAgentModel(mesa.Model):
         self.edges = edges
         self.start_id = start_id
         self.end_id = end_id
-        self.vuln_index = vuln_index
         self.climate_weight = climate_weight
         self._vuln_cache: dict = {}
+        self._vuln_grid = _build_grid(vuln_index)   # O(M) once; lookups are O(1)
 
         self.agent = PathfinderAgent(self)
         path = self._astar(start_id, end_id)
@@ -89,7 +104,7 @@ class SingleAgentModel(mesa.Model):
     def _get_vuln(self, node_id: str) -> float:
         if node_id not in self._vuln_cache:
             lng, lat = self.nodes[node_id]
-            self._vuln_cache[node_id] = sample_vuln(lng, lat, self.vuln_index)
+            self._vuln_cache[node_id] = _sample_grid(lng, lat, self._vuln_grid)
         return self._vuln_cache[node_id]
 
     def _edge_cost(self, node_id: str, dist: float) -> float:
@@ -104,9 +119,9 @@ class SingleAgentModel(mesa.Model):
         return math.sqrt(dx * dx + dy * dy)
 
     def _astar(self, start_id: str, goal_id: str) -> list:
-        g_score  = {start_id: 0.0}
+        g_score   = {start_id: 0.0}
         came_from: dict = {}
-        counter  = 0
+        counter   = 0
         open_heap = [(self._heuristic(start_id, goal_id), counter, start_id)]
         closed: set = set()
 

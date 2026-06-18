@@ -7,8 +7,20 @@ import ChatPanel from './components/ChatPanel'
 import CompareDivider from './components/CompareDivider'
 import Legend from './components/Legend'
 import InfoModal from './components/InfoModal'
+import { MESA_API_URL } from './constants'
+
+// Ping the Mesa HF Space on load so the container is warm before the user runs a simulation.
+// HF free-tier Spaces sleep after ~15 min; this gives them ~60s to wake up in the background.
+function useMesaWarmup() {
+  useEffect(() => {
+    fetch(`${MESA_API_URL}/health`, { signal: AbortSignal.timeout(60000) })
+      .catch(() => {})  // silence errors — warmup is best-effort
+  }, [])
+}
 
 export default function App() {
+  useMesaWarmup()
+
   const [activeFields,     setActiveFields]     = useState([])
   const [impactData,       setImpactData]       = useState(null)
   const [selectedCategory, setSelectedCategory] = useState('')

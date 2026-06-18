@@ -53,6 +53,11 @@ export default function useMapbox({
   // Cached extrusion GeoJSON — geometry built once, only _value mutated on updates
   const extrusionRef       = useRef(null)
   const extrusionImpactRef = useRef(null)
+  // Cached impact FC — features built once, only _value/_inFocus mutated on updates
+  const impactFCRef        = useRef(null)
+  // Cached multi-agent FCs — coordinates mutated in-place per RAF frame
+  const agentFCBaseRef     = useRef(null)
+  const agentFCPolicyRef   = useRef(null)
   const [isCompareVisible, setIsCompareVisible] = useState(false)
   const [is3D,             setIs3D]             = useState(false)
   const onPointsLoadedRef  = useRef(onPointsLoaded)
@@ -401,7 +406,19 @@ export default function useMapbox({
 
     const currentFields = activeFields.length > 0 ? activeFields : ['heat','SPEI','urban_health']
 
-    const impactFeatures = pts.features.map(f => {
+    // Build impact FC once; on subsequent calls mutate _value/_inFocus in-place
+    if (!impactFCRef.current) {
+      impactFCRef.current = {
+        type: 'FeatureCollection',
+        features: pts.features.map(f => ({
+          type: 'Feature',
+          geometry: f.geometry,
+          properties: { _value: 0, _inFocus: false }
+        }))
+      }
+    }
+
+    pts.features.forEach((f, i) => {
       const p = f.properties
       const barriName = (p.N_Barri || '').toLowerCase().trim()
       const isInNeighborhood = isCitywide || targetBarri === ''
@@ -423,20 +440,16 @@ export default function useMapbox({
         V_sum += V_new
         count++
       })
-      return {
-        type: 'Feature',
-        geometry: f.geometry,
-        properties: { _value: count > 0 ? V_sum / count : 0, _inFocus: p._inFocus }
-      }
+      impactFCRef.current.features[i].properties._value  = count > 0 ? V_sum / count : 0
+      impactFCRef.current.features[i].properties._inFocus = p._inFocus
     })
 
-    const fc = { type: 'FeatureCollection', features: impactFeatures }
-    mapInst.getSource('points-impact').setData(fc)
-    onImpactComputedRef.current?.(fc)
+    mapInst.getSource('points-impact').setData(impactFCRef.current)
+    onImpactComputedRef.current?.(impactFCRef.current)
 
     // Mutate cached impact extrusion features in-place — no new geometry allocation
     if (extrusionImpactRef.current && mapInst.getSource('extrusion-impact')) {
-      impactFeatures.forEach((f, i) => {
+      impactFCRef.current.features.forEach((f, i) => {
         extrusionImpactRef.current.features[i].properties._value = f.properties._value || 0
       })
       mapInst.getSource('extrusion-impact').setData(extrusionImpactRef.current)
@@ -640,23 +653,48 @@ export default function useMapbox({
     if (mImpact?.getSource('selected-shelter-impact')) mImpact.getSource('selected-shelter-impact').setData(fc)
   }, [selectedShelterCoord])
 
-  // Move multi-agent dots — called directly from MultiABMPanel RAF tick
+  // Move multi-agent dots — called directly from MultiABMPanel RAF tick.
+  // Reuses pre-allocated GeoJSON FCs and mutates coordinates in-place to avoid
+  // allocating new objects on every animation frame.
   const updateMultiAgentPositions = useCallback((frameIdx, baseSnaps, policySnaps) => {
     const mBase   = mapRef.current
     const mImpact = mapImpactInst.current
     if (!mBase?.getSource('multi-agents-baseline')) return
-    const toFC = snapshot => ({
+
+    const bFrame = baseSnaps?.[Math.min(frameIdx, (baseSnaps?.length || 1) - 1)] || []
+    const pFrame = policySnaps?.[Math.min(frameIdx, (policySnaps?.length || 1) - 1)] || []
+
+    const initFC = agents => ({
       type: 'FeatureCollection',
-      features: (snapshot || []).map(a => ({
+      features: agents.map(a => ({
         type: 'Feature',
         geometry: { type: 'Point', coordinates: [a.lng, a.lat] },
         properties: { arrived: a.arrived }
       }))
     })
-    const bFrame = baseSnaps?.[Math.min(frameIdx, (baseSnaps?.length || 1) - 1)]
-    const pFrame = policySnaps?.[Math.min(frameIdx, (policySnaps?.length || 1) - 1)]
-    mBase.getSource('multi-agents-baseline').setData(toFC(bFrame))
-    if (mImpact?.getSource('multi-agents-policy')) mImpact.getSource('multi-agents-policy').setData(toFC(pFrame))
+
+    if (!agentFCBaseRef.current || agentFCBaseRef.current.features.length !== bFrame.length) {
+      agentFCBaseRef.current = initFC(bFrame)
+    } else {
+      bFrame.forEach((a, i) => {
+        agentFCBaseRef.current.features[i].geometry.coordinates[0] = a.lng
+        agentFCBaseRef.current.features[i].geometry.coordinates[1] = a.lat
+        agentFCBaseRef.current.features[i].properties.arrived = a.arrived
+      })
+    }
+
+    if (!agentFCPolicyRef.current || agentFCPolicyRef.current.features.length !== pFrame.length) {
+      agentFCPolicyRef.current = initFC(pFrame)
+    } else {
+      pFrame.forEach((a, i) => {
+        agentFCPolicyRef.current.features[i].geometry.coordinates[0] = a.lng
+        agentFCPolicyRef.current.features[i].geometry.coordinates[1] = a.lat
+        agentFCPolicyRef.current.features[i].properties.arrived = a.arrived
+      })
+    }
+
+    mBase.getSource('multi-agents-baseline').setData(agentFCBaseRef.current)
+    if (mImpact?.getSource('multi-agents-policy')) mImpact.getSource('multi-agents-policy').setData(agentFCPolicyRef.current)
   }, [])
 
   return {

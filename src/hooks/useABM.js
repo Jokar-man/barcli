@@ -115,7 +115,7 @@ export default function useABM({ isActive, points, stats, activeFields, impactFe
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify(body),
-        signal:  AbortSignal.timeout(45000),  // 45s — HF Space cold start can be slow
+        signal:  AbortSignal.timeout(60000),  // 60s — HF Space cold start can be 30-60s
       })
 
       if (!res.ok) throw new Error(`Mesa API ${res.status}`)
