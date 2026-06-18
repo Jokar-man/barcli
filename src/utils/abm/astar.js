@@ -80,12 +80,16 @@ export function astar(startId, goalId, nodes, edges, costFn) {
  * @param {number} score - normalised vulnerability [0, 1]
  * @returns {number} cost multiplier used by A* edge weighting
  */
+// Balanced cost: max 2.5× so the agent won't detour more than 2.5× the direct
+// distance to avoid a hot zone. The previous 8× caused visually absurd paths.
+// At 2.5× a 30m edge through an extreme zone costs 75m equivalent — the agent
+// reroutes only when a meaningful shorter alternative exists nearby.
 export function ampCost(score) {
-  if (score >= 0.8) return  8.0   // expensive — agent detours when a short alternative exists
-  if (score >= 0.7) return  4.0   // noticeable cost — moderate detour
-  if (score >= 0.6) return  2.0   // mild cost — slight preference to avoid
-  if (score >= 0.4) return  1.2   // near-neutral
-  if (score >= 0.2) return  1.0
-  return 0.7                       // safe corridor — mildly preferred
+  if (score >= 0.8) return 2.5   // extreme  — clear avoidance but no huge detours
+  if (score >= 0.7) return 2.0   // high
+  if (score >= 0.6) return 1.5   // moderate
+  if (score >= 0.4) return 1.1   // near-neutral
+  if (score >= 0.2) return 1.0
+  return 0.85                     // cool corridor — slightly preferred
 }
 

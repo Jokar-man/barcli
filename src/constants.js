@@ -2,10 +2,11 @@ export const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN || '';
 export const CENTER = [2.1734, 41.3851];
 export const ALPHA = 0.6;
 export const BETA  = 0.5;
-export const AI_API_URL = import.meta.env.VITE_AI_API_URL || 'https://jokar-man-urban-climate-model.hf.space';
+export const AI_API_URL   = import.meta.env.VITE_AI_API_URL   || 'https://jokar-man-urban-climate-model.hf.space';
+export const MESA_API_URL = import.meta.env.VITE_MESA_API_URL || AI_API_URL;
 
 export const HALO_COLOR = [
-  'interpolate', ['linear'], ['get', '_value'],
+  'interpolate', ['linear'], ['coalesce', ['get', '_value'], 0],
   0,   'rgba(0,120,255,0)',
   0.1, 'rgba(0,120,255,0.12)',
   0.5, 'rgba(0,255,180,0.18)',
@@ -14,7 +15,7 @@ export const HALO_COLOR = [
 ];
 
 export const CORE_COLOR = [
-  'interpolate', ['linear'], ['get', '_value'],
+  'interpolate', ['linear'], ['coalesce', ['get', '_value'], 0],
   0.0, 'rgba(50,50,50,0)',
   0.2, 'rgb(0,120,255)',
   0.5, 'rgb(0,255,180)',
